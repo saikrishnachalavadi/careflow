@@ -1,0 +1,14 @@
+# CareFlow POC – Render Blueprint
+# Deploy: push to GitHub/GitLab, then connect repo in Render Dashboard and add env vars.
+services:
+  - type: web
+    name: careflow
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: GOOGLE_MAPS_API_KEY
+        sync: false

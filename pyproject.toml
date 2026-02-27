@@ -1,0 +1,6 @@
+[project]
+name = "careflow"
+version = "0.1.0"
+description = "AI-powered healthcare navigation and triage web platform"
+requires-python = ">=3.12"
+dependencies = []

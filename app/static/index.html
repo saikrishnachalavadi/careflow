@@ -1,0 +1,1400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CareFlow – Chat</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      margin: 0;
+      background: #f0f2f5;
+      color: #1a1a2e;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .header {
+      padding: 0.75rem 1rem;
+      background: #16213e;
+      color: #fff;
+      flex-shrink: 0;
+    }
+    .header h1 { margin: 0; font-size: 1.25rem; }
+    .header .sub { margin: 0.25rem 0 0; font-size: 0.8rem; opacity: 0.9; }
+    .chat {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    .msg {
+      max-width: 85%;
+      padding: 0.65rem 1rem;
+      border-radius: 1rem;
+      font-size: 0.95rem;
+      line-height: 1.4;
+    }
+    .msg.user {
+      align-self: flex-end;
+      background: #2563eb;
+      color: #fff;
+      border-bottom-right-radius: 0.25rem;
+    }
+    .msg.bot {
+      align-self: flex-start;
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-bottom-left-radius: 0.25rem;
+    }
+    .msg.bot .text { margin: 0; }
+    .msg.bot .text strong { color: #1e40af; }
+    .msg.error { background: #fef2f2; border-color: #f87171; }
+    .msg .actions { margin-top: 0.75rem; }
+    .msg .btn {
+      display: inline-block;
+      padding: 0.4rem 0.75rem;
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      border-radius: 0.5rem;
+      font-size: 0.9rem;
+      cursor: pointer;
+    }
+    .msg .btn:hover { background: #1d4ed8; }
+    .msg .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    .typing {
+      align-self: flex-start;
+      padding: 0.65rem 1rem;
+      background: #fff;
+      border-radius: 1rem;
+      border-bottom-left-radius: 0.25rem;
+      font-size: 0.9rem;
+      color: #64748b;
+    }
+    .input-area {
+      flex-shrink: 0;
+      padding: 0.75rem 1rem;
+      background: #fff;
+      border-top: 1px solid #e2e8f0;
+      display: flex;
+      gap: 0.5rem;
+      align-items: flex-end;
+    }
+    .input-area textarea {
+      flex: 1;
+      min-height: 44px;
+      max-height: 120px;
+      padding: 0.6rem 0.75rem;
+      border: 1px solid #cbd5e0;
+      border-radius: 1.25rem;
+      font-size: 1rem;
+      font-family: inherit;
+      resize: none;
+    }
+    .input-area textarea:focus { outline: none; border-color: #2563eb; }
+    .input-area button {
+      flex-shrink: 0;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      border: none;
+      background: #2563eb;
+      color: #fff;
+      cursor: pointer;
+      font-size: 1.1rem;
+    }
+    .input-area button:hover { background: #1d4ed8; }
+    .input-area button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .links { padding: 0.5rem 1rem; font-size: 0.8rem; background: #fff; border-top: 1px solid #e2e8f0; }
+    .links a { color: #2563eb; text-decoration: none; }
+    .links a:hover { text-decoration: underline; }
+    .list-place { margin-top: 0.5rem; font-size: 0.9rem; }
+    .list-place .name { font-weight: 600; }
+    .list-place .vicinity, .list-place .number { color: #64748b; }
+    /* Emergency popup */
+    .popup-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000;
+      display: none; align-items: center; justify-content: center; padding: 1rem;
+    }
+    .popup-overlay.show { display: flex; }
+    .popup {
+      background: #fff; border-radius: 12px; max-width: 420px; width: 100%;
+      max-height: 85vh; overflow: hidden; display: flex; flex-direction: column;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+    }
+    .popup-title { position: relative; padding: 1rem 2.5rem 1rem 1.25rem; font-weight: 700; font-size: 1.1rem; border-bottom: 1px solid #e2e8f0; }
+    .popup-body { padding: 1.25rem; overflow-y: auto; flex: 1; min-height: 120px; }
+    .popup-close {
+      position: absolute; top: 0.75rem; right: 0.75rem; background: none; border: none;
+      font-size: 1.5rem; cursor: pointer; color: #64748b; line-height: 1;
+    }
+    .popup-close:hover { color: #1a1a2e; }
+    .emergency-112 {
+      display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
+      padding: 0.75rem; background: #fef2f2; border-radius: 8px; margin-bottom: 1rem;
+    }
+    .emergency-112 .num { font-weight: 700; font-size: 1.25rem; }
+    .btn-call {
+      display: inline-block; padding: 0.5rem 1rem; background: #dc2626; color: #fff;
+      border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 0.9rem;
+    }
+    .btn-call:hover { background: #b91c1c; color: #fff; }
+    .btn-map {
+      display: inline-block; padding: 0.5rem 0.75rem; background: #2563eb; color: #fff;
+      border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 0.85rem;
+    }
+    .btn-map:hover { background: #1d4ed8; color: #fff; }
+    .tel-hint { font-size: 0.75rem; color: #64748b; margin-top: 0.5rem; }
+    .btn-copy { padding: 0.35rem 0.6rem; background: #475569; color: #fff; border: none; border-radius: 6px; font-size: 0.8rem; cursor: pointer; margin-left: 0.35rem; }
+    .btn-copy:hover { background: #334155; }
+    .popup-row .call-wrap { display: flex; align-items: center; gap: 0.35rem; flex-shrink: 0; }
+    .popup-section { margin-bottom: 1rem; }
+    .popup-section h4 { margin: 0 0 0.5rem; font-size: 0.95rem; color: #475569; }
+    .popup-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
+      padding: 0.5rem 0; border-bottom: 1px solid #f1f5f9;
+    }
+    .popup-row .name { font-weight: 600; }
+    .popup-row .hours { font-size: 0.8rem; color: #0ea5e9; margin-top: 0.15rem; }
+    .popup-row .distance { font-size: 0.8rem; color: #64748b; margin-top: 0.15rem; }
+    .popup-row .vicinity { font-size: 0.85rem; color: #64748b; }
+  </style>
+</head>
+<body>
+  <div id="emergencyPopup" class="popup-overlay" aria-hidden="true">
+    <div class="popup">
+      <div class="popup-title">Emergency services <button type="button" class="popup-close" id="emergencyPopupClose" aria-label="Close">&times;</button></div>
+      <div class="popup-body" id="emergencyPopupBody">
+        <p>Share your location to see nearby ambulances and hospitals with call options.</p>
+        <button type="button" class="btn" id="emergencyPopupShare">Share location</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="doctorsPopup" class="popup-overlay" aria-hidden="true">
+    <div class="popup">
+      <div class="popup-title">Nearby doctors <button type="button" class="popup-close" id="doctorsPopupClose" aria-label="Close">&times;</button></div>
+      <div class="popup-body" id="doctorsPopupBody">
+        <p>Share your location or enter a city to see nearby doctors with call options.</p>
+        <button type="button" class="btn" id="doctorsPopupShare">Share location</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="pharmacyPopup" class="popup-overlay" aria-hidden="true">
+    <div class="popup">
+      <div class="popup-title">Find a pharmacy <button type="button" class="popup-close" id="pharmacyPopupClose" aria-label="Close">&times;</button></div>
+      <div class="popup-body" id="pharmacyPopupBody">
+        <p>Choose: pharmacy near you or order online.</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="labsPopup" class="popup-overlay" aria-hidden="true">
+    <div class="popup">
+      <div class="popup-title">Find labs / diagnostic tests <button type="button" class="popup-close" id="labsPopupClose" aria-label="Close">&times;</button></div>
+      <div class="popup-body" id="labsPopupBody">
+        <p>Choose: labs near you or book tests at home.</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="psychologicalPopup" class="popup-overlay" aria-hidden="true">
+    <div class="popup">
+      <div class="popup-title">Mental health support <button type="button" class="popup-close" id="psychologicalPopupClose" aria-label="Close">&times;</button></div>
+      <div class="popup-body" id="psychologicalPopupBody">
+        <p>Find a mental health professional nearby or see crisis helplines.</p>
+      </div>
+    </div>
+  </div>
+
+  <header class="header">
+    <h1>CareFlow</h1>
+    <p class="sub">Healthcare navigation &amp; triage. Tell me what you need.</p>
+  </header>
+
+  <div class="chat" id="chat">
+    <div class="msg bot">
+      <div class="text">Hi! I'm CareFlow. I can help with health-related questions—finding a doctor, pharmacy, lab tests, or emergency help. What do you need?</div>
+    </div>
+  </div>
+
+  <div class="input-area">
+    <textarea id="input" placeholder="Type your message…" rows="1"></textarea>
+    <button type="button" id="sendBtn" title="Send">➤</button>
+  </div>
+
+  <p class="links">
+    <a href="/docs" target="_blank">API docs</a> · <a href="/" target="_blank">API root</a>
+  </p>
+
+  <script>
+    const chat = document.getElementById('chat');
+    const input = document.getElementById('input');
+    const sendBtn = document.getElementById('sendBtn');
+
+    let userId = 'user-local-test';
+    let sessionId = null;
+
+    function escapeHtml(s) {
+      const div = document.createElement('div');
+      div.textContent = s;
+      return div.innerHTML;
+    }
+
+    function renderMessage(text) {
+      return escapeHtml(text || '').replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
+    }
+
+    var DOCTOR_SPECIALTY_OPTIONS = [
+      { value: '', label: 'Any doctor / clinic' },
+      { value: 'general_physician', label: 'General physician' },
+      { value: 'pediatrician', label: 'Pediatrician (children)' },
+      { value: 'dermatologist', label: 'Dermatologist' },
+      { value: 'cardiologist', label: 'Cardiologist' },
+      { value: 'gynecologist', label: 'Gynecologist' },
+      { value: 'orthopedic', label: 'Orthopedic' },
+      { value: 'psychiatrist', label: 'Psychiatrist' },
+      { value: 'neurologist', label: 'Neurologist' },
+      { value: 'dentist', label: 'Dentist' },
+      { value: 'ophthalmologist', label: 'Ophthalmologist' },
+      { value: 'ent', label: 'ENT specialist' },
+      { value: 'gastroenterologist', label: 'Gastroenterologist' },
+      { value: 'pulmonologist', label: 'Pulmonologist' },
+      { value: 'nephrologist', label: 'Nephrologist' },
+      { value: 'urologist', label: 'Urologist' },
+      { value: 'rheumatologist', label: 'Rheumatologist' },
+      { value: 'endocrinologist', label: 'Endocrinologist' },
+      { value: 'clinic', label: 'Clinic' },
+    ];
+
+    function addMsg(content, isUser, action, actionLabel, actionMeta) {
+      const div = document.createElement('div');
+      div.className = 'msg ' + (isUser ? 'user' : 'bot');
+      if (isUser) {
+        div.innerHTML = '<div class="text">' + escapeHtml(content) + '</div>';
+      } else {
+        let html = '<div class="text">' + content + '</div>';
+        if (action && actionLabel) {
+          var dataSpecialty = (actionMeta && actionMeta.doctor_specialty) ? (' data-doctor-specialty="' + escapeHtml(actionMeta.doctor_specialty) + '"') : '';
+          html += '<div class="actions"><button type="button" class="btn" data-action="' + escapeHtml(action) + '"' + dataSpecialty + '>' + escapeHtml(actionLabel) + '</button></div>';
+        }
+        div.innerHTML = html;
+        div.querySelectorAll('.btn').forEach(btn => {
+          btn.addEventListener('click', () => handleAction(btn.dataset.action, div));
+        });
+      }
+      chat.appendChild(div);
+      chat.scrollTop = chat.scrollHeight;
+      return div;
+    }
+
+    function addTyping() {
+      const div = document.createElement('div');
+      div.className = 'typing';
+      div.id = 'typing';
+      div.textContent = 'CareFlow is thinking…';
+      chat.appendChild(div);
+      chat.scrollTop = chat.scrollHeight;
+      return div;
+    }
+
+    function removeTyping() {
+      const el = document.getElementById('typing');
+      if (el) el.remove();
+    }
+
+    function telUri(num) {
+      var s = (num || '').replace(/\s/g, '').replace(/[^\d+]/g, '');
+      return 'tel:' + (s || '112');
+    }
+
+    function mapsDirUrl(p) {
+      var loc = p && p.geometry && p.geometry.location;
+      if (loc && typeof loc.lat === 'number' && typeof loc.lng === 'number') {
+        return 'https://www.google.com/maps/dir/?api=1&destination=' + loc.lat + ',' + loc.lng;
+      }
+      var q = (p && (p.name || '') + ' ' + (p.vicinity || '')) || '';
+      return 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(q.trim() || '');
+    }
+
+    function mapLinkHtml(p) {
+      var url = mapsDirUrl(p);
+      return '<a href="' + escapeHtml(url) + '" target="_blank" rel="noopener" class="btn-map" title="Open in Google Maps with directions">Map</a>';
+    }
+
+    function formatDistance(km) {
+      if (km == null || typeof km !== 'number') return '';
+      if (km < 1) return Math.round(km * 1000) + ' m';
+      return km.toFixed(1).replace(/\.0$/, '') + ' km';
+    }
+
+    function distanceHtml(p) {
+      var d = p.distance_km;
+      if (d == null || d === '') return '';
+      var text = formatDistance(typeof d === 'number' ? d : parseFloat(d));
+      return text ? ('<div class="distance">' + escapeHtml(text) + ' away</div>') : '';
+    }
+
+    function renderEmergencyResults(data) {
+      if (!data || typeof data !== 'object') {
+        return '<p>Could not load results. Call <a href="' + telUri('112') + '">112</a> for emergencies.</p>';
+      }
+      if (data.error) {
+        return '<div class="emergency-112"><span class="num">Emergency</span><a href="' + telUri('112') + '" class="btn-call">Call 112</a></div><p style="margin-top:1rem;">' + escapeHtml(data.error) + '</p>';
+      }
+      var html = '<div class="emergency-112"><span class="num">Emergency</span><a href="' + telUri('112') + '" class="btn-call">Call 112</a><button type="button" class="btn-copy" data-copy="112">Copy</button></div>' +
+        '<p class="tel-hint">Linux: If Call opens Teams, run: <code>xdg-mime default org.gnome.Phones.desktop x-scheme-handler/tel</code> (install GNOME Phone dialer if needed). Or use <strong>Copy</strong> and paste the number into your phone.</p>';
+      var ambulances = data.ambulances || [];
+      var hospitals = data.hospitals || [];
+      function rowHtml(p) {
+        var phone = (p.phone || '').replace(/\s/g, '');
+        var displayPhone = phone || '112';
+        var uri = telUri(displayPhone);
+        var copyBtn = phone ? '<button type="button" class="btn-copy" data-copy="' + escapeHtml(phone) + '">Copy</button>' : '';
+        var mapBtn = mapLinkHtml(p);
+        var hours = (p.opening_hours_text || '').trim();
+        var hoursHtml = hours ? '<div class="hours">' + escapeHtml(hours) + '</div>' : '';
+        var distHtml = distanceHtml(p);
+        return '<div class="popup-row"><div><div class="name">' + escapeHtml(p.name || '') + '</div>' + hoursHtml + distHtml + '<div class="vicinity">' + escapeHtml(p.vicinity || '') + '</div></div><div class="call-wrap"><a href="' + uri + '" class="btn-call">Call</a>' + mapBtn + copyBtn + '</div></div>';
+      }
+      if (ambulances.length) {
+        html += '<div class="popup-section"><h4>Ambulances / services</h4>';
+        ambulances.forEach(function(p) { html += rowHtml(p); });
+        html += '</div>';
+      }
+      if (hospitals.length) {
+        html += '<div class="popup-section"><h4>Hospitals</h4>';
+        hospitals.forEach(function(p) { html += rowHtml(p); });
+        html += '</div>';
+      }
+      if (!ambulances.length && !hospitals.length) {
+        html += '<p style="margin-top:1rem;">No ambulances or hospitals found for this area. Call <a href="' + telUri('112') + '">112</a> for emergencies.</p>';
+      }
+      return html;
+    }
+
+    function renderDoctorsResults(data) {
+      if (!data || typeof data !== 'object') {
+        return '<p>Could not load doctors. Try again or search on maps.</p>';
+      }
+      if (data.error) {
+        return '<p>' + escapeHtml(data.error) + '</p>';
+      }
+      var doctors = data.doctors || [];
+      function rowHtml(p) {
+        var phone = (p.phone || '').replace(/\s/g, '');
+        var copyBtn = phone ? '<button type="button" class="btn-copy" data-copy="' + escapeHtml(phone) + '">Copy</button>' : '';
+        var callBtn = phone ? '<a href="' + telUri(phone) + '" class="btn-call">Call</a>' : '';
+        var mapBtn = mapLinkHtml(p);
+        var hours = (p.opening_hours_text || '').trim();
+        var hoursHtml = hours ? '<div class="hours">' + escapeHtml(hours) + '</div>' : '';
+        var distHtml = distanceHtml(p);
+        return '<div class="popup-row"><div><div class="name">' + escapeHtml(p.name || '') + '</div>' + hoursHtml + distHtml + '<div class="vicinity">' + escapeHtml(p.vicinity || '') + '</div></div><div class="call-wrap">' + callBtn + mapBtn + copyBtn + '</div></div>';
+      }
+      var openList = doctors.filter(function(p) { return p.open_now === true; });
+      var closedList = doctors.filter(function(p) { return p.open_now !== true; });
+      var html = '<p class="tel-hint">Linux: If Call opens Teams, run: <code>xdg-mime default org.gnome.Phones.desktop x-scheme-handler/tel</code>. Or use <strong>Copy</strong> and paste into your phone.</p>';
+      if (doctors.length) {
+        if (openList.length) {
+          html += '<div class="popup-section"><h4>Open now</h4>';
+          openList.forEach(function(p) { html += rowHtml(p); });
+          html += '</div>';
+        }
+        if (closedList.length) {
+          html += '<div class="popup-section"><h4>Closed</h4>';
+          closedList.forEach(function(p) { html += rowHtml(p); });
+          html += '</div>';
+        }
+        if (data.has_more) {
+          html += '<div class="popup-section" style="margin-top:0.75rem;"><button type="button" class="btn" id="doctorsPopupLoadMore">Load more (10 more)</button></div>';
+        }
+      } else {
+        html += '<p style="margin-top:1rem;">No doctors or clinics found in this area. Try a different location or search on Google Maps.</p>';
+      }
+      return html;
+    }
+
+    function renderPharmacyResults(data) {
+      if (!data || typeof data !== 'object') {
+        return '<p>Could not load pharmacies. Try again or search on maps.</p>';
+      }
+      if (data.error) {
+        return '<p>' + escapeHtml(data.error) + '</p>';
+      }
+      var pharmacies = data.pharmacies || [];
+      function rowHtml(p) {
+        var phone = (p.phone || '').replace(/\s/g, '');
+        var copyBtn = phone ? '<button type="button" class="btn-copy" data-copy="' + escapeHtml(phone) + '">Copy</button>' : '';
+        var callBtn = phone ? '<a href="' + telUri(phone) + '" class="btn-call">Call</a>' : '';
+        var mapBtn = mapLinkHtml(p);
+        var hours = (p.opening_hours_text || '').trim();
+        var hoursHtml = hours ? '<div class="hours">' + escapeHtml(hours) + '</div>' : '';
+        var distHtml = distanceHtml(p);
+        return '<div class="popup-row"><div><div class="name">' + escapeHtml(p.name || '') + '</div>' + hoursHtml + distHtml + '<div class="vicinity">' + escapeHtml(p.vicinity || '') + '</div></div><div class="call-wrap">' + callBtn + mapBtn + copyBtn + '</div></div>';
+      }
+      var html = '<p class="tel-hint">Linux: If Call opens Teams, run: <code>xdg-mime default org.gnome.Phones.desktop x-scheme-handler/tel</code>. Or use <strong>Copy</strong> and paste into your phone.</p>';
+      if (pharmacies.length) {
+        html += '<div class="popup-section"><h4>Nearby pharmacies</h4>';
+        pharmacies.forEach(function(p) { html += rowHtml(p); });
+        html += '</div>';
+      } else {
+        html += '<p style="margin-top:1rem;">No pharmacies with listed phone numbers in this area. Try a different location or search on Google Maps.</p>';
+      }
+      return html;
+    }
+
+    function renderLabsResults(data) {
+      if (!data || typeof data !== 'object') {
+        return '<p>Could not load labs. Try again or search on maps.</p>';
+      }
+      if (data.error) {
+        return '<p>' + escapeHtml(data.error) + '</p>';
+      }
+      var labs = data.labs || [];
+      function rowHtml(p) {
+        var phone = (p.phone || '').replace(/\s/g, '');
+        var copyBtn = phone ? '<button type="button" class="btn-copy" data-copy="' + escapeHtml(phone) + '">Copy</button>' : '';
+        var callBtn = phone ? '<a href="' + telUri(phone) + '" class="btn-call">Call</a>' : '';
+        var mapBtn = mapLinkHtml(p);
+        var hours = (p.opening_hours_text || '').trim();
+        var hoursHtml = hours ? '<div class="hours">' + escapeHtml(hours) + '</div>' : '';
+        var distHtml = distanceHtml(p);
+        return '<div class="popup-row"><div><div class="name">' + escapeHtml(p.name || '') + '</div>' + hoursHtml + distHtml + '<div class="vicinity">' + escapeHtml(p.vicinity || '') + '</div></div><div class="call-wrap">' + callBtn + mapBtn + copyBtn + '</div></div>';
+      }
+      var html = '<p class="tel-hint">Linux: If Call opens Teams, run: <code>xdg-mime default org.gnome.Phones.desktop x-scheme-handler/tel</code>. Or use <strong>Copy</strong> and paste into your phone.</p>';
+      if (labs.length) {
+        html += '<div class="popup-section"><h4>Nearby labs / diagnostics</h4>';
+        labs.forEach(function(p) { html += rowHtml(p); });
+        html += '</div>';
+      } else {
+        html += '<p style="margin-top:1rem;">No labs with listed phone numbers in this area. Try a different location or search on Google Maps.</p>';
+      }
+      return html;
+    }
+
+    function renderPsychologicalResults(data) {
+      if (!data || typeof data !== 'object') {
+        return '<p>Could not load results. Try again or search on maps.</p>';
+      }
+      if (data.error) {
+        return '<p>' + escapeHtml(data.error) + '</p>';
+      }
+      var list = data.professionals || [];
+      function rowHtml(p) {
+        var phone = (p.phone || '').replace(/\s/g, '');
+        var copyBtn = phone ? '<button type="button" class="btn-copy" data-copy="' + escapeHtml(phone) + '">Copy</button>' : '';
+        var callBtn = phone ? '<a href="' + telUri(phone) + '" class="btn-call">Call</a>' : '';
+        var mapBtn = mapLinkHtml(p);
+        var hours = (p.opening_hours_text || '').trim();
+        var hoursHtml = hours ? '<div class="hours">' + escapeHtml(hours) + '</div>' : '';
+        var distHtml = distanceHtml(p);
+        return '<div class="popup-row"><div><div class="name">' + escapeHtml(p.name || '') + '</div>' + hoursHtml + distHtml + '<div class="vicinity">' + escapeHtml(p.vicinity || '') + '</div></div><div class="call-wrap">' + callBtn + mapBtn + copyBtn + '</div></div>';
+      }
+      var html = '<p class="tel-hint">Linux: If Call opens Teams, run: <code>xdg-mime default org.gnome.Phones.desktop x-scheme-handler/tel</code>. Or use <strong>Copy</strong> and paste into your phone.</p>';
+      if (list.length) {
+        html += '<div class="popup-section"><h4>Mental health professionals</h4>';
+        list.forEach(function(p) { html += rowHtml(p); });
+        html += '</div>';
+      } else {
+        html += '<p style="margin-top:1rem;">No professionals with listed phone numbers in this area. Try a different location or search on Google Maps.</p>';
+      }
+      return html;
+    }
+
+    function locationErrorMsg(err) {
+      var code = err && err.code;
+      if (code === 1) {
+        return 'Location was denied. <strong>Try this:</strong> (1) Use <code>http://127.0.0.1</code> or <code>localhost</code> (not an IP like 192.168.x.x over HTTP). (2) When the browser asks, click Allow. (3) Or check your browser settings → Site settings → Location and allow for this site. Call <a href="tel:112">112</a> for emergencies.';
+      }
+      if (code === 2) {
+        return 'Location unavailable — this device/browser could not get your position. <strong>Common on desktop:</strong> many PCs don\'t have a location provider (GPS/Wi‑Fi). Try on a phone, or enable location in your OS (e.g. Windows Settings → Privacy → Location). Call <a href="tel:112">112</a> for emergencies, or <a href="https://www.google.com/maps/search/emergency+hospital" target="_blank" rel="noopener">search nearby on Google Maps</a>.';
+      }
+      if (code === 3) return 'Location timed out. Try again or call <a href="tel:112">112</a> for emergencies.';
+      return 'Could not get location. Call <a href="tel:112">112</a> for emergencies.';
+    }
+
+    function openEmergencyPopup() {
+      const overlay = document.getElementById('emergencyPopup');
+      const body = document.getElementById('emergencyPopupBody');
+      if (!body) return;
+
+      function showResults(data) {
+        body.innerHTML = renderEmergencyResults(data || {});
+      }
+
+      function loadServicesFromCoords(lat, lon, note) {
+        body.innerHTML = '<p>Loading nearby services…</p>';
+        fetch('/emergency/services?lat=' + lat + '&lon=' + lon)
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            var html = renderEmergencyResults(data || {});
+            if (note && html.indexOf('emergency-112') !== -1) {
+              html = '<p class="vicinity" style="margin-bottom:0.75rem;">' + escapeHtml(note) + '</p>' + html;
+            }
+            body.innerHTML = html;
+          })
+          .catch(function() {
+            body.innerHTML = '<div class="emergency-112"><span class="num">Emergency</span><a href="tel:112" class="btn-call">Call 112</a></div><p style="margin-top:1rem;">Could not load services. Call 112 for emergencies.</p>';
+          });
+      }
+
+      function tryApproxLocation() {
+        body.innerHTML = '<p>Using approximate location from your network…</p>';
+        fetch('https://ipapi.co/json/')
+          .then(function(r) { return r.json(); })
+          .then(function(geo) {
+            var lat = geo.latitude;
+            var lon = geo.longitude;
+            if (typeof lat === 'number' && typeof lon === 'number') {
+              loadServicesFromCoords(lat, lon, 'Approximate location (from your IP). For precise results, enter your city below.');
+            } else {
+              body.innerHTML = '<p>' + locationErrorMsg({ code: 2 }) + '</p><p style="margin-top:0.75rem;">Or use the city search below.</p>';
+            }
+          })
+          .catch(function() {
+            body.innerHTML = '<p>' + locationErrorMsg({ code: 2 }) + '</p><p style="margin-top:0.75rem;">Or use the city search below (no location needed).</p>';
+          });
+      }
+
+      function shareEmergency() {
+        if (!navigator.geolocation) {
+          tryApproxLocation();
+          return;
+        }
+        body.innerHTML = '<p>Getting location… (allow when the browser asks)</p>';
+        var opts = { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 };
+        navigator.geolocation.getCurrentPosition(
+          function(pos) {
+            loadServicesFromCoords(pos.coords.latitude, pos.coords.longitude, null);
+          },
+          function(err) {
+            body.innerHTML = '<p>Trying approximate location…</p>';
+            tryApproxLocation();
+          },
+          opts
+        );
+      }
+
+      function doCitySearch() {
+        var inputEl = document.getElementById('emergencyPopupCity');
+        var q = (inputEl && inputEl.value) ? inputEl.value.trim() : '';
+        if (!q) {
+          var msg = document.createElement('p');
+          msg.style.cssText = 'color:#b91c1c;margin-top:0.5rem;font-size:0.9rem;';
+          msg.textContent = 'Please enter a city or area name.';
+          if (body.querySelector('.city-error')) return;
+          msg.className = 'city-error';
+          body.appendChild(msg);
+          return;
+        }
+        body.innerHTML = '<p>Searching for &quot;' + escapeHtml(q) + '&quot;…</p>';
+        fetch('/emergency/services?q=' + encodeURIComponent(q))
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            showResults(data || {});
+          })
+          .catch(function() {
+            body.innerHTML = '<div class="emergency-112"><span class="num">Emergency</span><a href="tel:112" class="btn-call">Call 112</a></div><p style="margin-top:1rem;">Could not load services. Check your connection and try again, or call 112 for emergencies.</p>';
+          });
+      }
+
+      body.innerHTML = '<p><strong>Get nearby ambulances and hospitals</strong></p>' +
+        '<p style="margin-top:0.5rem;"><button type="button" class="btn" id="emergencyPopupShare">Use my location</button></p>' +
+        '<p class="vicinity" style="margin-top:1rem;font-size:0.85rem;">Or enter city/area (no GPS needed):</p>' +
+        '<p style="margin-top:0.35rem;display:flex;gap:0.5rem;"><input type="text" id="emergencyPopupCity" placeholder="e.g. Bangalore, Mumbai" style="flex:1;padding:0.5rem;border:1px solid #cbd5e0;border-radius:6px;" /><button type="button" class="btn" id="emergencyPopupSearch">Search</button></p>';
+      overlay.classList.add('show');
+      overlay.setAttribute('aria-hidden', 'false');
+
+      document.getElementById('emergencyPopupShare').onclick = shareEmergency;
+      document.getElementById('emergencyPopupSearch').onclick = doCitySearch;
+      document.getElementById('emergencyPopupCity').onkeydown = function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); doCitySearch(); }
+      };
+    }
+
+    function closeEmergencyPopup() {
+      document.getElementById('emergencyPopup').classList.remove('show');
+      document.getElementById('emergencyPopup').setAttribute('aria-hidden', 'true');
+    }
+
+    document.getElementById('emergencyPopupClose').onclick = closeEmergencyPopup;
+    document.getElementById('emergencyPopup').onclick = function(e) {
+      if (e.target === this) closeEmergencyPopup();
+    };
+
+    function openDoctorsPopup(initialSpecialty) {
+      const overlay = document.getElementById('doctorsPopup');
+      const body = document.getElementById('doctorsPopupBody');
+      if (!body) return;
+      var currentSpecialty = initialSpecialty || '';
+      var lastDoctorsParams = null;
+      var lastDoctorsList = [];
+      var lastDoctorsNote = null;
+
+      function getSelectedSpecialty() {
+        var sel = document.getElementById('doctorsPopupType');
+        return (sel && sel.value) ? sel.value.trim() : '';
+      }
+
+      function showResults(data) {
+        body.innerHTML = renderDoctorsResults(data || {});
+      }
+
+      function showResultsWithLoadMore(data, note) {
+        if (data.error) {
+          body.innerHTML = '<p>' + escapeHtml(data.error) + '</p>';
+          return;
+        }
+        lastDoctorsList = data.doctors || [];
+        if (note) lastDoctorsNote = note;
+        var payload = { doctors: lastDoctorsList, has_more: data.has_more === true };
+        var html = renderDoctorsResults(payload);
+        if (lastDoctorsNote) html = '<p class="vicinity" style="margin-bottom:0.75rem;">' + escapeHtml(lastDoctorsNote) + '</p>' + html;
+        body.innerHTML = html;
+        bindDoctorsLoadMore();
+      }
+
+      function bindDoctorsLoadMore() {
+        var btn = document.getElementById('doctorsPopupLoadMore');
+        if (!btn) return;
+        btn.onclick = function() {
+          var params = lastDoctorsParams;
+          if (!params) return;
+          btn.disabled = true;
+          btn.textContent = 'Loading…';
+          var qs = 'skip=' + lastDoctorsList.length + '&limit=10';
+          if (params.lat != null && params.lon != null) {
+            qs = 'lat=' + params.lat + '&lon=' + params.lon + '&' + qs;
+          } else if (params.q) {
+            qs = 'q=' + encodeURIComponent(params.q) + '&' + qs;
+          }
+          if (params.specialty) qs += '&specialty=' + encodeURIComponent(params.specialty);
+          fetch('/doctors/nearby?' + qs)
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+              lastDoctorsList = lastDoctorsList.concat(data.doctors || []);
+              var html = renderDoctorsResults({ doctors: lastDoctorsList, has_more: data.has_more === true });
+              if (lastDoctorsNote) html = '<p class="vicinity" style="margin-bottom:0.75rem;">' + escapeHtml(lastDoctorsNote) + '</p>' + html;
+              body.innerHTML = html;
+              bindDoctorsLoadMore();
+            })
+            .catch(function() {
+              btn.disabled = false;
+              btn.textContent = 'Load more (10 more)';
+            });
+        };
+      }
+
+      function loadDoctorsFromCoords(lat, lon, note, specialtyOverride) {
+        var spec = (specialtyOverride !== undefined && specialtyOverride !== null) ? specialtyOverride : getSelectedSpecialty();
+        lastDoctorsParams = { lat: lat, lon: lon, specialty: spec };
+        var specParam = spec ? ('&specialty=' + encodeURIComponent(spec)) : '';
+        body.innerHTML = '<p>Loading nearby doctors…</p>';
+        var qs = 'lat=' + lat + '&lon=' + lon + specParam + '&limit=10';
+        fetch('/doctors/nearby?' + qs)
+          .then(function(r) { return r.json(); })
+          .then(function(data) { showResultsWithLoadMore(data || {}, note); })
+          .catch(function() {
+            body.innerHTML = '<p>Could not load doctors. Try again or search on maps.</p>';
+          });
+      }
+
+      function tryApproxLocation(specialtyOverride) {
+        body.innerHTML = '<p>Using approximate location from your network…</p>';
+        fetch('https://ipapi.co/json/')
+          .then(function(r) { return r.json(); })
+          .then(function(geo) {
+            var lat = geo.latitude;
+            var lon = geo.longitude;
+            if (typeof lat === 'number' && typeof lon === 'number') {
+              loadDoctorsFromCoords(lat, lon, 'Approximate location (from your IP). For precise results, enter your city below.', specialtyOverride);
+            } else {
+              body.innerHTML = '<p>Could not get location. Use the city search below.</p>';
+            }
+          })
+          .catch(function() {
+            body.innerHTML = '<p>Could not get location. Use the city search below.</p>';
+          });
+      }
+
+      function shareDoctors() {
+        var savedSpecialty = getSelectedSpecialty();
+        if (!navigator.geolocation) {
+          tryApproxLocation(savedSpecialty);
+          return;
+        }
+        body.innerHTML = '<p>Getting location… (allow when the browser asks)</p>';
+        var opts = { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 };
+        navigator.geolocation.getCurrentPosition(
+          function(pos) {
+            loadDoctorsFromCoords(pos.coords.latitude, pos.coords.longitude, null, savedSpecialty);
+          },
+          function() {
+            body.innerHTML = '<p>Trying approximate location…</p>';
+            tryApproxLocation(savedSpecialty);
+          },
+          opts
+        );
+      }
+
+      function doDoctorsCitySearch() {
+        var inputEl = document.getElementById('doctorsPopupCity');
+        var q = (inputEl && inputEl.value) ? inputEl.value.trim() : '';
+        if (!q) {
+          var msg = document.createElement('p');
+          msg.style.cssText = 'color:#b91c1c;margin-top:0.5rem;font-size:0.9rem;';
+          msg.textContent = 'Please enter a city or area name.';
+          if (body.querySelector('.city-error')) return;
+          msg.className = 'city-error';
+          body.appendChild(msg);
+          return;
+        }
+        var spec = getSelectedSpecialty();
+        lastDoctorsParams = { q: q, specialty: spec };
+        lastDoctorsNote = null;
+        var specParam = spec ? ('&specialty=' + encodeURIComponent(spec)) : '';
+        body.innerHTML = '<p>Searching for &quot;' + escapeHtml(q) + '&quot;…</p>';
+        var qs = 'q=' + encodeURIComponent(q) + specParam + '&limit=10';
+        fetch('/doctors/nearby?' + qs)
+          .then(function(r) { return r.json(); })
+          .then(function(data) { showResultsWithLoadMore(data || {}); })
+          .catch(function() {
+            body.innerHTML = '<p>Could not load doctors. Try again or search on maps.</p>';
+          });
+      }
+
+      var options = DOCTOR_SPECIALTY_OPTIONS.slice();
+      if (currentSpecialty && !options.some(function(o) { return o.value === currentSpecialty; })) {
+        options.unshift({ value: currentSpecialty, label: currentSpecialty.replace(/_/g, ' ') });
+      }
+      var typeOptionsHtml = options.map(function(o) {
+        var sel = (o.value === currentSpecialty) ? ' selected' : '';
+        return '<option value="' + escapeHtml(o.value) + '"' + sel + '>' + escapeHtml(o.label) + '</option>';
+      }).join('');
+      body.innerHTML = '<p><strong>Get nearby doctors with call options</strong></p>' +
+        '<p class="vicinity" style="margin-top:0.5rem;font-size:0.85rem;">Type:</p>' +
+        '<p style="margin-top:0.25rem;"><select id="doctorsPopupType" style="width:100%;padding:0.5rem;border:1px solid #cbd5e0;border-radius:6px;font-size:0.95rem;">' + typeOptionsHtml + '</select></p>' +
+        '<p style="margin-top:0.75rem;"><button type="button" class="btn" id="doctorsPopupShare">Use my location</button></p>' +
+        '<p class="vicinity" style="margin-top:1rem;font-size:0.85rem;">Or enter city/area (no GPS needed):</p>' +
+        '<p style="margin-top:0.35rem;display:flex;gap:0.5rem;"><input type="text" id="doctorsPopupCity" placeholder="e.g. Bangalore, Mumbai" style="flex:1;padding:0.5rem;border:1px solid #cbd5e0;border-radius:6px;" /><button type="button" class="btn" id="doctorsPopupSearch">Search</button></p>';
+      overlay.classList.add('show');
+      overlay.setAttribute('aria-hidden', 'false');
+
+      document.getElementById('doctorsPopupShare').onclick = shareDoctors;
+      document.getElementById('doctorsPopupSearch').onclick = doDoctorsCitySearch;
+      document.getElementById('doctorsPopupCity').onkeydown = function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); doDoctorsCitySearch(); }
+      };
+    }
+
+    function closeDoctorsPopup() {
+      document.getElementById('doctorsPopup').classList.remove('show');
+      document.getElementById('doctorsPopup').setAttribute('aria-hidden', 'true');
+    }
+
+    document.getElementById('doctorsPopupClose').onclick = closeDoctorsPopup;
+    document.getElementById('doctorsPopup').onclick = function(e) {
+      if (e.target === this) closeDoctorsPopup();
+    };
+
+    var PHARMACY_ONLINE_LINKS = [
+      { name: 'MedPlus Mart', url: 'https://www.medplusmart.com/' },
+      { name: 'Apollo Pharmacy', url: 'https://www.apollopharmacy.in/' },
+    ];
+
+    function openPharmacyPopup() {
+      const overlay = document.getElementById('pharmacyPopup');
+      const body = document.getElementById('pharmacyPopupBody');
+      if (!body) return;
+
+      function showPharmacyChoice() {
+        var onlineHtml = PHARMACY_ONLINE_LINKS.map(function(l) {
+          return '<a href="' + escapeHtml(l.url) + '" target="_blank" rel="noopener" class="btn" style="display:inline-block;margin:0.25rem 0.5rem 0.25rem 0;">' + escapeHtml(l.name) + '</a>';
+        }).join('');
+        body.innerHTML =
+          '<div class="popup-section"><h4>Pharmacy near me</h4>' +
+          '<p style="margin:0.5rem 0;"><button type="button" class="btn" id="pharmacyPopupShare">Use my location</button></p>' +
+          '<p class="vicinity" style="font-size:0.85rem;">Or enter city/area:</p>' +
+          '<p style="margin:0.35rem 0;display:flex;gap:0.5rem;"><input type="text" id="pharmacyPopupCity" placeholder="e.g. Bangalore, Mumbai" style="flex:1;padding:0.5rem;border:1px solid #cbd5e0;border-radius:6px;" /><button type="button" class="btn" id="pharmacyPopupSearch">Search</button></p></div>' +
+          '<div class="popup-section"><h4>Order online</h4>' +
+          '<p class="vicinity" style="margin:0.25rem 0;font-size:0.9rem;">Get medicines delivered. Open an online pharmacy:</p>' +
+          '<p style="margin:0.5rem 0;">' + onlineHtml + '</p></div>';
+        document.getElementById('pharmacyPopupShare').onclick = sharePharmacy;
+        document.getElementById('pharmacyPopupSearch').onclick = doPharmacyCitySearch;
+        var cityEl = document.getElementById('pharmacyPopupCity');
+        if (cityEl) cityEl.onkeydown = function(e) { if (e.key === 'Enter') { e.preventDefault(); doPharmacyCitySearch(); } };
+      }
+
+      function showResults(data) {
+        body.innerHTML = renderPharmacyResults(data || {});
+      }
+
+      function loadPharmaciesFromCoords(lat, lon, note) {
+        body.innerHTML = '<p>Loading nearby pharmacies…</p>';
+        fetch('/pharmacy/nearby?lat=' + lat + '&lon=' + lon)
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            var html = renderPharmacyResults(data || {});
+            if (note) html = '<p class="vicinity" style="margin-bottom:0.75rem;">' + escapeHtml(note) + '</p>' + html;
+            html += '<p style="margin-top:0.75rem;"><button type="button" class="btn" id="pharmacyPopupBack">← Back</button></p>';
+            body.innerHTML = html;
+            document.getElementById('pharmacyPopupBack').onclick = showPharmacyChoice;
+          })
+          .catch(function() {
+            body.innerHTML = '<p>Could not load pharmacies. Try again or search on maps.</p><p style="margin-top:0.75rem;"><button type="button" class="btn" id="pharmacyPopupBack">← Back</button></p>';
+            document.getElementById('pharmacyPopupBack').onclick = showPharmacyChoice;
+          });
+      }
+
+      function tryApproxLocationPharmacy() {
+        body.innerHTML = '<p>Using approximate location from your network…</p>';
+        fetch('https://ipapi.co/json/')
+          .then(function(r) { return r.json(); })
+          .then(function(geo) {
+            var lat = geo.latitude;
+            var lon = geo.longitude;
+            if (typeof lat === 'number' && typeof lon === 'number') {
+              loadPharmaciesFromCoords(lat, lon, 'Approximate location (from your IP). For precise results, enter your city below.');
+            } else {
+              body.innerHTML = '<p>Could not get location. Use the city search below.</p>';
+              showPharmacyChoice();
+            }
+          })
+          .catch(function() {
+            body.innerHTML = '<p>Could not get location. Use the city search below.</p>';
+            showPharmacyChoice();
+          });
+      }
+
+      function sharePharmacy() {
+        if (!navigator.geolocation) {
+          tryApproxLocationPharmacy();
+          return;
+        }
+        body.innerHTML = '<p>Getting location… (allow when the browser asks)</p>';
+        var opts = { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 };
+        navigator.geolocation.getCurrentPosition(
+          function(pos) {
+            loadPharmaciesFromCoords(pos.coords.latitude, pos.coords.longitude, null);
+          },
+          function() {
+            body.innerHTML = '<p>Trying approximate location…</p>';
+            tryApproxLocationPharmacy();
+          },
+          opts
+        );
+      }
+
+      function doPharmacyCitySearch() {
+        var inputEl = document.getElementById('pharmacyPopupCity');
+        var q = (inputEl && inputEl.value) ? inputEl.value.trim() : '';
+        if (!q) {
+          var msg = document.createElement('p');
+          msg.style.cssText = 'color:#b91c1c;margin-top:0.5rem;font-size:0.9rem;';
+          msg.textContent = 'Please enter a city or area name.';
+          if (body.querySelector('.pharmacy-city-error')) return;
+          msg.className = 'pharmacy-city-error';
+          body.appendChild(msg);
+          return;
+        }
+        body.innerHTML = '<p>Searching for &quot;' + escapeHtml(q) + '&quot;…</p>';
+        fetch('/pharmacy/nearby?q=' + encodeURIComponent(q))
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            var html = renderPharmacyResults(data || {});
+            html += '<p style="margin-top:0.75rem;"><button type="button" class="btn" id="pharmacyPopupBack">← Back</button></p>';
+            body.innerHTML = html;
+            document.getElementById('pharmacyPopupBack').onclick = showPharmacyChoice;
+          })
+          .catch(function() {
+            body.innerHTML = '<p>Could not load pharmacies. Try again or search on maps.</p><p style="margin-top:0.75rem;"><button type="button" class="btn" id="pharmacyPopupBack">← Back</button></p>';
+            document.getElementById('pharmacyPopupBack').onclick = showPharmacyChoice;
+          });
+      }
+
+      showPharmacyChoice();
+      overlay.classList.add('show');
+      overlay.setAttribute('aria-hidden', 'false');
+    }
+
+    function closePharmacyPopup() {
+      document.getElementById('pharmacyPopup').classList.remove('show');
+      document.getElementById('pharmacyPopup').setAttribute('aria-hidden', 'true');
+    }
+
+    document.getElementById('pharmacyPopupClose').onclick = closePharmacyPopup;
+    document.getElementById('pharmacyPopup').onclick = function(e) {
+      if (e.target === this) closePharmacyPopup();
+    };
+
+    var LABS_ONLINE_LINKS = [
+      { name: 'Apollo Pharmacy – Lab Tests at Home', url: 'https://www.apollopharmacy.in/' },
+      { name: '1mg Labs', url: 'https://www.1mg.com/labs' },
+    ];
+
+    function openLabsPopup() {
+      const overlay = document.getElementById('labsPopup');
+      const body = document.getElementById('labsPopupBody');
+      if (!body) return;
+
+      function showLabsChoice() {
+        var onlineHtml = LABS_ONLINE_LINKS.map(function(l) {
+          return '<a href="' + escapeHtml(l.url) + '" target="_blank" rel="noopener" class="btn" style="display:inline-block;margin:0.25rem 0.5rem 0.25rem 0;">' + escapeHtml(l.name) + '</a>';
+        }).join('');
+        body.innerHTML =
+          '<div class="popup-section"><h4>Labs near me</h4>' +
+          '<p style="margin:0.5rem 0;"><button type="button" class="btn" id="labsPopupShare">Use my location</button></p>' +
+          '<p class="vicinity" style="font-size:0.85rem;">Or enter city/area:</p>' +
+          '<p style="margin:0.35rem 0;display:flex;gap:0.5rem;"><input type="text" id="labsPopupCity" placeholder="e.g. Bangalore, Mumbai" style="flex:1;padding:0.5rem;border:1px solid #cbd5e0;border-radius:6px;" /><button type="button" class="btn" id="labsPopupSearch">Search</button></p></div>' +
+          '<div class="popup-section"><h4>Book tests at home</h4>' +
+          '<p class="vicinity" style="margin:0.25rem 0;font-size:0.9rem;">Book diagnostic / lab tests and get sample collection at home:</p>' +
+          '<p style="margin:0.5rem 0;">' + onlineHtml + '</p></div>';
+        document.getElementById('labsPopupShare').onclick = shareLabs;
+        document.getElementById('labsPopupSearch').onclick = doLabsCitySearch;
+        var cityEl = document.getElementById('labsPopupCity');
+        if (cityEl) cityEl.onkeydown = function(e) { if (e.key === 'Enter') { e.preventDefault(); doLabsCitySearch(); } };
+      }
+
+      function loadLabsFromCoords(lat, lon, note) {
+        body.innerHTML = '<p>Loading nearby labs…</p>';
+        fetch('/labs/nearby?lat=' + lat + '&lon=' + lon)
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            var html = renderLabsResults(data || {});
+            if (note) html = '<p class="vicinity" style="margin-bottom:0.75rem;">' + escapeHtml(note) + '</p>' + html;
+            html += '<p style="margin-top:0.75rem;"><button type="button" class="btn" id="labsPopupBack">← Back</button></p>';
+            body.innerHTML = html;
+            document.getElementById('labsPopupBack').onclick = showLabsChoice;
+          })
+          .catch(function() {
+            body.innerHTML = '<p>Could not load labs. Try again or search on maps.</p><p style="margin-top:0.75rem;"><button type="button" class="btn" id="labsPopupBack">← Back</button></p>';
+            document.getElementById('labsPopupBack').onclick = showLabsChoice;
+          });
+      }
+
+      function tryApproxLocationLabs() {
+        body.innerHTML = '<p>Using approximate location from your network…</p>';
+        fetch('https://ipapi.co/json/')
+          .then(function(r) { return r.json(); })
+          .then(function(geo) {
+            var lat = geo.latitude;
+            var lon = geo.longitude;
+            if (typeof lat === 'number' && typeof lon === 'number') {
+              loadLabsFromCoords(lat, lon, 'Approximate location (from your IP). For precise results, enter your city below.');
+            } else {
+              body.innerHTML = '<p>Could not get location. Use the city search below.</p>';
+              showLabsChoice();
+            }
+          })
+          .catch(function() {
+            body.innerHTML = '<p>Could not get location. Use the city search below.</p>';
+            showLabsChoice();
+          });
+      }
+
+      function shareLabs() {
+        if (!navigator.geolocation) {
+          tryApproxLocationLabs();
+          return;
+        }
+        body.innerHTML = '<p>Getting location… (allow when the browser asks)</p>';
+        var opts = { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 };
+        navigator.geolocation.getCurrentPosition(
+          function(pos) {
+            loadLabsFromCoords(pos.coords.latitude, pos.coords.longitude, null);
+          },
+          function() {
+            body.innerHTML = '<p>Trying approximate location…</p>';
+            tryApproxLocationLabs();
+          },
+          opts
+        );
+      }
+
+      function doLabsCitySearch() {
+        var inputEl = document.getElementById('labsPopupCity');
+        var q = (inputEl && inputEl.value) ? inputEl.value.trim() : '';
+        if (!q) {
+          var msg = document.createElement('p');
+          msg.style.cssText = 'color:#b91c1c;margin-top:0.5rem;font-size:0.9rem;';
+          msg.textContent = 'Please enter a city or area name.';
+          if (body.querySelector('.labs-city-error')) return;
+          msg.className = 'labs-city-error';
+          body.appendChild(msg);
+          return;
+        }
+        body.innerHTML = '<p>Searching for &quot;' + escapeHtml(q) + '&quot;…</p>';
+        fetch('/labs/nearby?q=' + encodeURIComponent(q))
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            var html = renderLabsResults(data || {});
+            html += '<p style="margin-top:0.75rem;"><button type="button" class="btn" id="labsPopupBack">← Back</button></p>';
+            body.innerHTML = html;
+            document.getElementById('labsPopupBack').onclick = showLabsChoice;
+          })
+          .catch(function() {
+            body.innerHTML = '<p>Could not load labs. Try again or search on maps.</p><p style="margin-top:0.75rem;"><button type="button" class="btn" id="labsPopupBack">← Back</button></p>';
+            document.getElementById('labsPopupBack').onclick = showLabsChoice;
+          });
+      }
+
+      showLabsChoice();
+      overlay.classList.add('show');
+      overlay.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeLabsPopup() {
+      document.getElementById('labsPopup').classList.remove('show');
+      document.getElementById('labsPopup').setAttribute('aria-hidden', 'true');
+    }
+
+    document.getElementById('labsPopupClose').onclick = closeLabsPopup;
+    document.getElementById('labsPopup').onclick = function(e) {
+      if (e.target === this) closeLabsPopup();
+    };
+
+    var PSYCHOLOGICAL_TYPE_OPTIONS = [
+      { value: '', label: 'Any (psychologist, psychiatrist, counselor)' },
+      { value: 'psychiatrist', label: 'Psychiatrist' },
+      { value: 'psychologist', label: 'Psychologist' },
+      { value: 'counselor', label: 'Counselor' },
+      { value: 'therapist', label: 'Therapist' },
+    ];
+
+    function openPsychologicalPopup() {
+      const overlay = document.getElementById('psychologicalPopup');
+      const body = document.getElementById('psychologicalPopupBody');
+      if (!body) return;
+
+      function getSelectedType() {
+        var sel = document.getElementById('psychologicalPopupType');
+        return (sel && sel.value) ? sel.value.trim() : '';
+      }
+
+      function showPsychologicalChoice() {
+        var typeOptionsHtml = PSYCHOLOGICAL_TYPE_OPTIONS.map(function(o) {
+          return '<option value="' + escapeHtml(o.value) + '">' + escapeHtml(o.label) + '</option>';
+        }).join('');
+        body.innerHTML =
+          '<p><strong>Find a mental health professional nearby</strong></p>' +
+          '<p class="vicinity" style="margin-top:0.5rem;font-size:0.85rem;">Type:</p>' +
+          '<p style="margin-top:0.25rem;"><select id="psychologicalPopupType" style="width:100%;padding:0.5rem;border:1px solid #cbd5e0;border-radius:6px;font-size:0.95rem;">' + typeOptionsHtml + '</select></p>' +
+          '<p style="margin-top:0.75rem;"><button type="button" class="btn" id="psychologicalPopupShare">Use my location</button></p>' +
+          '<p class="vicinity" style="margin-top:1rem;font-size:0.85rem;">Or enter city/area (no GPS needed):</p>' +
+          '<p style="margin-top:0.35rem;display:flex;gap:0.5rem;"><input type="text" id="psychologicalPopupCity" placeholder="e.g. Bangalore, Mumbai" style="flex:1;padding:0.5rem;border:1px solid #cbd5e0;border-radius:6px;" /><button type="button" class="btn" id="psychologicalPopupSearch">Search</button></p>' +
+          '<div class="popup-section" style="margin-top:1.25rem;"><h4>In crisis?</h4>' +
+          '<p class="vicinity" style="font-size:0.9rem;">Reach out to a helpline. Numbers will load below.</p>' +
+          '<div id="psychologicalCrisisHelplines"></div></div>';
+        document.getElementById('psychologicalPopupShare').onclick = sharePsychological;
+        document.getElementById('psychologicalPopupSearch').onclick = doPsychologicalCitySearch;
+        var cityEl = document.getElementById('psychologicalPopupCity');
+        if (cityEl) cityEl.onkeydown = function(e) { if (e.key === 'Enter') { e.preventDefault(); doPsychologicalCitySearch(); } };
+        fetch('/mental-health/crisis-helplines')
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            var helplines = data.helplines || [];
+            var el = document.getElementById('psychologicalCrisisHelplines');
+            if (el) {
+              var h = '';
+              helplines.forEach(function(line) {
+                var num = (line.number || '').replace(/\s/g, '');
+                h += '<div class="popup-row"><div><div class="name">' + escapeHtml(line.name || '') + '</div></div><div class="call-wrap"><a href="' + telUri(num) + '" class="btn-call">Call</a><button type="button" class="btn-copy" data-copy="' + escapeHtml(num) + '">Copy</button></div></div>';
+              });
+              el.innerHTML = h || '<p class="vicinity">No helplines loaded.</p>';
+            }
+          })
+          .catch(function() {});
+      }
+
+      function loadPsychologicalFromCoords(lat, lon, note, typeOverride) {
+        var spec = (typeOverride !== undefined && typeOverride !== null) ? typeOverride : getSelectedType();
+        var specParam = spec ? ('&specialty=' + encodeURIComponent(spec)) : '';
+        body.innerHTML = '<p>Loading nearby professionals…</p>';
+        fetch('/mental-health/nearby?lat=' + lat + '&lon=' + lon + specParam)
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            var html = renderPsychologicalResults(data || {});
+            if (note) html = '<p class="vicinity" style="margin-bottom:0.75rem;">' + escapeHtml(note) + '</p>' + html;
+            html += '<p style="margin-top:0.75rem;"><button type="button" class="btn" id="psychologicalPopupBack">← Back</button></p>';
+            body.innerHTML = html;
+            document.getElementById('psychologicalPopupBack').onclick = showPsychologicalChoice;
+          })
+          .catch(function() {
+            body.innerHTML = '<p>Could not load results. Try again or search on maps.</p><p style="margin-top:0.75rem;"><button type="button" class="btn" id="psychologicalPopupBack">← Back</button></p>';
+            document.getElementById('psychologicalPopupBack').onclick = showPsychologicalChoice;
+          });
+      }
+
+      function tryApproxLocationPsychological(typeOverride) {
+        body.innerHTML = '<p>Using approximate location from your network…</p>';
+        fetch('https://ipapi.co/json/')
+          .then(function(r) { return r.json(); })
+          .then(function(geo) {
+            var lat = geo.latitude;
+            var lon = geo.longitude;
+            if (typeof lat === 'number' && typeof lon === 'number') {
+              loadPsychologicalFromCoords(lat, lon, 'Approximate location (from your IP). For precise results, enter your city below.', typeOverride);
+            } else {
+              body.innerHTML = '<p>Could not get location. Use the city search below.</p>';
+              showPsychologicalChoice();
+            }
+          })
+          .catch(function() {
+            body.innerHTML = '<p>Could not get location. Use the city search below.</p>';
+            showPsychologicalChoice();
+          });
+      }
+
+      function sharePsychological() {
+        var savedType = getSelectedType();
+        if (!navigator.geolocation) {
+          tryApproxLocationPsychological(savedType);
+          return;
+        }
+        body.innerHTML = '<p>Getting location… (allow when the browser asks)</p>';
+        var opts = { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 };
+        navigator.geolocation.getCurrentPosition(
+          function(pos) {
+            loadPsychologicalFromCoords(pos.coords.latitude, pos.coords.longitude, null, savedType);
+          },
+          function() {
+            body.innerHTML = '<p>Trying approximate location…</p>';
+            tryApproxLocationPsychological(savedType);
+          },
+          opts
+        );
+      }
+
+      function doPsychologicalCitySearch() {
+        var inputEl = document.getElementById('psychologicalPopupCity');
+        var q = (inputEl && inputEl.value) ? inputEl.value.trim() : '';
+        if (!q) {
+          var msg = document.createElement('p');
+          msg.style.cssText = 'color:#b91c1c;margin-top:0.5rem;font-size:0.9rem;';
+          msg.textContent = 'Please enter a city or area name.';
+          if (body.querySelector('.psychological-city-error')) return;
+          msg.className = 'psychological-city-error';
+          body.appendChild(msg);
+          return;
+        }
+        var spec = getSelectedType();
+        var specParam = spec ? ('&specialty=' + encodeURIComponent(spec)) : '';
+        body.innerHTML = '<p>Searching for &quot;' + escapeHtml(q) + '&quot;…</p>';
+        fetch('/mental-health/nearby?q=' + encodeURIComponent(q) + specParam)
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            var html = renderPsychologicalResults(data || {});
+            html += '<p style="margin-top:0.75rem;"><button type="button" class="btn" id="psychologicalPopupBack">← Back</button></p>';
+            body.innerHTML = html;
+            document.getElementById('psychologicalPopupBack').onclick = showPsychologicalChoice;
+          })
+          .catch(function() {
+            body.innerHTML = '<p>Could not load results. Try again or search on maps.</p><p style="margin-top:0.75rem;"><button type="button" class="btn" id="psychologicalPopupBack">← Back</button></p>';
+            document.getElementById('psychologicalPopupBack').onclick = showPsychologicalChoice;
+          });
+      }
+
+      showPsychologicalChoice();
+      overlay.classList.add('show');
+      overlay.setAttribute('aria-hidden', 'false');
+    }
+
+    function closePsychologicalPopup() {
+      document.getElementById('psychologicalPopup').classList.remove('show');
+      document.getElementById('psychologicalPopup').setAttribute('aria-hidden', 'true');
+    }
+
+    document.getElementById('psychologicalPopupClose').onclick = closePsychologicalPopup;
+    document.getElementById('psychologicalPopup').onclick = function(e) {
+      if (e.target === this) closePsychologicalPopup();
+    };
+
+    document.addEventListener('click', function(e) {
+      if (e.target && e.target.classList && e.target.classList.contains('btn-copy')) {
+        var num = e.target.getAttribute('data-copy') || '';
+        if (num && navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(num).then(function() {
+            e.target.textContent = 'Copied!';
+            setTimeout(function() { e.target.textContent = 'Copy'; }, 1500);
+          });
+        }
+      }
+    });
+
+    async function handleAction(action, afterEl) {
+      if (action === 'emergency_services') {
+        openEmergencyPopup();
+        return;
+      }
+      if (action === 'doctors') {
+        var specialty = (afterEl && afterEl.querySelector('.btn[data-action="doctors"]')) ? (afterEl.querySelector('.btn[data-action="doctors"]').getAttribute('data-doctor-specialty') || '') : '';
+        openDoctorsPopup(specialty);
+        return;
+      }
+      if (action === 'pharmacy') {
+        openPharmacyPopup();
+        return;
+      }
+      if (action === 'labs') {
+        openLabsPopup();
+        return;
+      }
+      if (action === 'psychological') {
+        openPsychologicalPopup();
+        return;
+      }
+      if (action === 'crisis_helplines') {
+        try {
+          const res = await fetch('/mental-health/crisis-helplines');
+          const data = await res.json();
+          const helplines = data.helplines || [];
+          let html = '<div class="text">Here are crisis helpline numbers:</div><div class="list-place">';
+          helplines.forEach(h => {
+            html += '<div class="name">' + escapeHtml(h.name || '') + '</div><div class="number">' + escapeHtml(h.number || '') + '</div>';
+          });
+          html += '</div>';
+          const div = document.createElement('div');
+          div.className = 'msg bot';
+          div.innerHTML = html;
+          chat.insertBefore(div, afterEl.nextSibling);
+          chat.scrollTop = chat.scrollHeight;
+        } catch (e) {
+          addMsg('Could not load helplines. Please try again.', false);
+        }
+        return;
+      }
+
+      const labels = {
+        doctors: 'Show nearby doctors',
+      };
+      const endpoints = {
+        doctors: '/doctors/nearby',
+      };
+      const label = labels[action] || 'Share location';
+      const endpoint = endpoints[action];
+      if (!endpoint) return;
+
+      if (!navigator.geolocation) {
+        addMsg('Location is not supported by your browser.', false);
+        return;
+      }
+
+      const btn = afterEl.querySelector('.btn');
+      if (btn) btn.disabled = true;
+
+      var locOpts = { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 };
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          const lat = pos.coords.latitude;
+          const lon = pos.coords.longitude;
+          try {
+            const res = await fetch(endpoint + '?lat=' + lat + '&lon=' + lon);
+            const data = await res.json();
+            const list = data.doctors || data.pharmacies || data.labs || [];
+            let html = '<div class="text">';
+            if (list.length) {
+              list.slice(0, 8).forEach(p => {
+                html += '<div class="list-place"><span class="name">' + escapeHtml(p.name || '') + '</span> <span class="vicinity">' + escapeHtml(p.vicinity || '') + '</span></div>';
+              });
+            } else {
+              html += 'No nearby results. Try a different location or search on maps.';
+            }
+            html += '</div>';
+            const div = document.createElement('div');
+            div.className = 'msg bot';
+            div.innerHTML = html;
+            chat.insertBefore(div, afterEl.nextSibling);
+            chat.scrollTop = chat.scrollHeight;
+          } catch (e) {
+            addMsg('Could not load nearby results. Please try again.', false);
+          }
+          if (btn) btn.disabled = false;
+        },
+        function(err) {
+          var msg = 'Location denied or unavailable. Use 127.0.0.1 or localhost and allow location when the browser asks.';
+          if (err && err.code === 1) msg = 'Location denied. Use http://127.0.0.1 or localhost and click Allow when the browser asks.';
+          addMsg(msg, false);
+          if (btn) btn.disabled = false;
+        },
+        locOpts
+      );
+    }
+
+    async function send() {
+      const text = input.value.trim();
+      if (!text) return;
+
+      input.value = '';
+      addMsg(text, true);
+
+      const typing = addTyping();
+      sendBtn.disabled = true;
+
+      try {
+        const body = { user_id: userId, message: text };
+        if (sessionId) body.session_id = sessionId;
+
+        const res = await fetch('/chat/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const raw = await res.text();
+        let data;
+        try {
+          data = JSON.parse(raw);
+        } catch (_) {
+          removeTyping();
+          const errDiv = addMsg('Something went wrong. Please try again.', false);
+          if (errDiv) errDiv.classList.add('error');
+          return;
+        }
+
+        removeTyping();
+
+        if (!res.ok) {
+          const msg = data.detail?.message || data.detail || res.statusText;
+          const errDiv = addMsg('Error: ' + (typeof msg === 'string' ? msg : JSON.stringify(msg)), false);
+          if (errDiv) errDiv.classList.add('error');
+          return;
+        }
+
+        if (data.session_id) sessionId = data.session_id;
+
+        const actionLabels = {
+          emergency_services: 'Show nearby ambulances & hospitals',
+          doctors: 'Share location for nearby doctors',
+          pharmacy: 'Find pharmacy (nearby or online)',
+          labs: 'Find labs (nearby or book at home)',
+          crisis_helplines: 'Show crisis helpline numbers',
+          psychological: 'Find mental health support (nearby or helplines)',
+        };
+        const actionLabel = data.action ? (actionLabels[data.action] || 'Share location') : null;
+        const actionMeta = (data.action === 'doctors' && data.doctor_specialty) ? { doctor_specialty: data.doctor_specialty } : undefined;
+        addMsg(renderMessage(data.message), false, data.action || null, actionLabel, actionMeta);
+      } catch (err) {
+        removeTyping();
+        const errDiv = addMsg('Request failed: ' + err.message, false);
+        if (errDiv) errDiv.classList.add('error');
+      } finally {
+        sendBtn.disabled = false;
+        input.focus();
+      }
+    }
+
+    sendBtn.addEventListener('click', send);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        send();
+      }
+    });
+    input.focus();
+  </script>
+</body>
+</html>

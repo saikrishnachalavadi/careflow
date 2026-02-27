@@ -1,0 +1,16 @@
+
+# Environment
+.env
+careflow_env/
+careflow.db
+careflow.db-journal
+__pycache__/
+*.pyc
+
+# IDE
+.idea/
+
+# OS
+.~lock.*
+*.doc
+*.odt
