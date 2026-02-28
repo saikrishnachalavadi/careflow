@@ -148,7 +148,6 @@
       border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 0.85rem;
     }
     .btn-map:hover { background: #1d4ed8; color: #fff; }
-    .tel-hint { font-size: 0.75rem; color: #64748b; margin-top: 0.5rem; }
     .btn-copy { padding: 0.35rem 0.6rem; background: #475569; color: #fff; border: none; border-radius: 6px; font-size: 0.8rem; cursor: pointer; margin-left: 0.35rem; }
     .btn-copy:hover { background: #334155; }
     .popup-row .call-wrap { display: flex; align-items: center; gap: 0.35rem; flex-shrink: 0; }
@@ -347,8 +346,7 @@
       if (data.error) {
         return '<div class="emergency-112"><span class="num">Emergency</span><a href="' + telUri('112') + '" class="btn-call">Call 112</a></div><p style="margin-top:1rem;">' + escapeHtml(data.error) + '</p>';
       }
-      var html = '<div class="emergency-112"><span class="num">Emergency</span><a href="' + telUri('112') + '" class="btn-call">Call 112</a><button type="button" class="btn-copy" data-copy="112">Copy</button></div>' +
-        '<p class="tel-hint">Linux: If Call opens Teams, run: <code>xdg-mime default org.gnome.Phones.desktop x-scheme-handler/tel</code> (install GNOME Phone dialer if needed). Or use <strong>Copy</strong> and paste the number into your phone.</p>';
+      var html = '<div class="emergency-112"><span class="num">Emergency</span><a href="' + telUri('112') + '" class="btn-call">Call 112</a><button type="button" class="btn-copy" data-copy="112">Copy</button></div>';
       var ambulances = data.ambulances || [];
       var hospitals = data.hospitals || [];
       function rowHtml(p) {
@@ -398,7 +396,7 @@
       }
       var openList = doctors.filter(function(p) { return p.open_now === true; });
       var closedList = doctors.filter(function(p) { return p.open_now !== true; });
-      var html = '<p class="tel-hint">Linux: If Call opens Teams, run: <code>xdg-mime default org.gnome.Phones.desktop x-scheme-handler/tel</code>. Or use <strong>Copy</strong> and paste into your phone.</p>';
+      var html = '';
       if (doctors.length) {
         if (openList.length) {
           html += '<div class="popup-section"><h4>Open now</h4>';
@@ -437,7 +435,7 @@
         var distHtml = distanceHtml(p);
         return '<div class="popup-row"><div><div class="name">' + escapeHtml(p.name || '') + '</div>' + hoursHtml + distHtml + '<div class="vicinity">' + escapeHtml(p.vicinity || '') + '</div></div><div class="call-wrap">' + callBtn + mapBtn + copyBtn + '</div></div>';
       }
-      var html = '<p class="tel-hint">Linux: If Call opens Teams, run: <code>xdg-mime default org.gnome.Phones.desktop x-scheme-handler/tel</code>. Or use <strong>Copy</strong> and paste into your phone.</p>';
+      var html = '';
       if (pharmacies.length) {
         html += '<div class="popup-section"><h4>Nearby pharmacies</h4>';
         pharmacies.forEach(function(p) { html += rowHtml(p); });
@@ -466,7 +464,7 @@
         var distHtml = distanceHtml(p);
         return '<div class="popup-row"><div><div class="name">' + escapeHtml(p.name || '') + '</div>' + hoursHtml + distHtml + '<div class="vicinity">' + escapeHtml(p.vicinity || '') + '</div></div><div class="call-wrap">' + callBtn + mapBtn + copyBtn + '</div></div>';
       }
-      var html = '<p class="tel-hint">Linux: If Call opens Teams, run: <code>xdg-mime default org.gnome.Phones.desktop x-scheme-handler/tel</code>. Or use <strong>Copy</strong> and paste into your phone.</p>';
+      var html = '';
       if (labs.length) {
         html += '<div class="popup-section"><h4>Nearby labs / diagnostics</h4>';
         labs.forEach(function(p) { html += rowHtml(p); });
@@ -495,7 +493,7 @@
         var distHtml = distanceHtml(p);
         return '<div class="popup-row"><div><div class="name">' + escapeHtml(p.name || '') + '</div>' + hoursHtml + distHtml + '<div class="vicinity">' + escapeHtml(p.vicinity || '') + '</div></div><div class="call-wrap">' + callBtn + mapBtn + copyBtn + '</div></div>';
       }
-      var html = '<p class="tel-hint">Linux: If Call opens Teams, run: <code>xdg-mime default org.gnome.Phones.desktop x-scheme-handler/tel</code>. Or use <strong>Copy</strong> and paste into your phone.</p>';
+      var html = '';
       if (list.length) {
         html += '<div class="popup-section"><h4>Mental health professionals</h4>';
         list.forEach(function(p) { html += rowHtml(p); });

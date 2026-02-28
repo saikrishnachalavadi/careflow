@@ -24,6 +24,27 @@ logger = logging.getLogger(__name__)
 _UNCLEAR_FALLBACK = "I can only help with health-related questions—symptoms, finding a doctor, pharmacy, lab, or emergencies. What do you need?"
 
 
+def _otc_suggestion_for_message(message: str) -> Optional[str]:
+    """
+    Lightweight OTC suggestions for common mild symptoms.
+    Keep this conservative: generic options + label-following, no dosing.
+    """
+    msg = (message or "").lower()
+
+    # Common cold / URTI
+    if any(k in msg for k in ("cold", "common cold", "runny nose", "stuffy nose", "congestion", "sore throat")):
+        return (
+            "For a typical cold, OTC options include acetaminophen/paracetamol for fever or aches, "
+            "saline nasal spray, and throat lozenges—follow the label and seek care if symptoms are severe or persist"
+        )
+
+    # Headache / mild pain
+    if "headache" in msg or "head ache" in msg:
+        return "For a mild headache, OTC options include acetaminophen/paracetamol—follow the label and seek care if severe or persistent"
+
+    return None
+
+
 async def _generate_unclear_reply(user_message: str) -> str:
     """Use Gemini (free tier) to generate a short, polite redirect for off-topic or unclear input."""
     if not settings.google_api_key:
@@ -99,6 +120,7 @@ def _doctor_specialty_label(specialty: Optional[str]) -> str:
 
 
 def _user_message(
+    user_message: str,
     route: str,
     severity_medical: str,
     severity_psychological: str,
@@ -117,7 +139,10 @@ def _user_message(
         doc_label = _doctor_specialty_label(doctor_specialty)
         return (f"I can help you find {doc_label}. Share your location to see nearby options.", "doctors")
     if route == "pharmacy_handoff":
-        return ("I can help you find a pharmacy or with over-the-counter options. Share your location for nearby pharmacies.", "pharmacy")
+        otc = _otc_suggestion_for_message(user_message)
+        if otc:
+            return (f"{otc}. If you'd like, I can help you find a pharmacy nearby—share your location.", "pharmacy")
+        return ("I can help you find a pharmacy. Share your location for nearby pharmacies.", "pharmacy")
     if route == "lab_handoff":
         return ("I can help you with lab tests. Share your location to find nearby labs.", "labs")
     if route == "unclear":
@@ -126,6 +151,10 @@ def _user_message(
     if route == "medical":
         if severity_medical == "M3":
             return ("Opening nearby emergency services.", "emergency_services")
+        if severity_medical == "M1":
+            otc = _otc_suggestion_for_message(user_message)
+            if otc:
+                return (f"{otc}. If you'd like, I can help you find a pharmacy nearby—share your location.", "pharmacy")
         if severity_psychological == "P3":
             return (
                 "If you're in crisis, please reach out to a helpline. Open the link below to see numbers and find mental health support.",
@@ -189,7 +218,7 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
         if user and result.get("abuse_strikes") is not None:
             user.abuse_strikes = result["abuse_strikes"]
             db.commit()
-        msg, action = _user_message(route, "M0", "P0", block_reason, None)
+        msg, action = _user_message(request.message, route, "M0", "P0", block_reason, None)
         return ChatResponse(message=msg, action=action, doctor_specialty=None, session_id=session.id)
 
     if route == "unclear":
@@ -217,6 +246,7 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
             recommended_action = "doctor_handoff"
 
     msg, action = _user_message(
+        request.message,
         route, severity_medical, severity_psychological, block_reason,
         doctor_specialty=doctor_specialty,
         doctor_suggestion_text=doctor_suggestion_text,
