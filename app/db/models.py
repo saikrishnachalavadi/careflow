@@ -9,7 +9,9 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(String, primary_key=True)
-    phone = Column(String, unique=True, nullable=False)
+    email = Column(String, unique=True, nullable=True, index=True)  # OAuth users
+    phone = Column(String, unique=True, nullable=True)  # optional for OAuth-only users
+    auth_provider = Column(String, nullable=True)  # google | yahoo | github
     created_at = Column(DateTime, default=datetime.utcnow)
     otc_attempts_used = Column(Integer, default=0)
     otc_privilege_status = Column(String, default="ACTIVE")  # ACTIVE | LOCKED

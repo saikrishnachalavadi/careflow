@@ -14,3 +14,4 @@ class ChatResponse(BaseModel):
     doctor_specialty: Optional[str] = None  # e.g. pediatrician (when action is doctors); None when using doctor_suggestion_text
     doctor_suggestion_text: Optional[str] = None  # LLM-generated short sentence suggesting which doctor type (when action is doctors)
     session_id: str
+    remaining_prompts: Optional[int] = None  # set when applicable so UI can show "X messages left"

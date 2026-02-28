@@ -21,8 +21,79 @@
       color: #fff;
       flex-shrink: 0;
     }
+    .header-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
     .header h1 { margin: 0; font-size: 1.25rem; }
     .header .sub { margin: 0.25rem 0 0; font-size: 0.8rem; opacity: 0.9; }
+    .auth-bar {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+    .auth-bar .prompts-left {
+      font-size: 0.8rem;
+      opacity: 0.95;
+    }
+    .auth-bar .btn-login {
+      display: inline-block;
+      padding: 0.35rem 0.6rem;
+      background: #fff;
+      color: #16213e;
+      border: none;
+      border-radius: 0.4rem;
+      font-size: 0.8rem;
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .auth-bar .btn-login:hover { background: #e2e8f0; }
+    .auth-bar .user-email { font-size: 0.85rem; opacity: 0.95; }
+    .auth-bar .btn-logout {
+      padding: 0.35rem 0.6rem;
+      background: transparent;
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.5);
+      border-radius: 0.4rem;
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+    .auth-bar .btn-logout:hover { background: rgba(255,255,255,0.15); }
+    .auth-bar .auth-trigger {
+      padding: 0.35rem 0.6rem;
+      background: transparent;
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.6);
+      border-radius: 0.4rem;
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+    .auth-bar .auth-trigger:hover { background: rgba(255,255,255,0.15); }
+    .auth-dropdown-wrap { position: relative; display: inline-block; }
+    .auth-provider-dropdown {
+      display: none;
+      position: absolute;
+      top: 100%;
+      right: 0;
+      margin-top: 0.25rem;
+      min-width: 10rem;
+      padding: 0.5rem;
+      background: #fff;
+      border-radius: 0.5rem;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      z-index: 100;
+    }
+    .auth-provider-dropdown.open { display: block; }
+    .auth-provider-dropdown .btn-login {
+      display: block;
+      margin-bottom: 0.25rem;
+      text-align: center;
+    }
+    .auth-provider-dropdown .btn-login:last-child { margin-bottom: 0; }
     .chat {
       flex: 1;
       overflow-y: auto;
@@ -212,8 +283,30 @@
   </div>
 
   <header class="header">
-    <h1>CareFlow</h1>
-    <p class="sub">Healthcare navigation &amp; triage. Tell me what you need.</p>
+    <div class="header-top">
+      <div>
+        <h1>CareFlow</h1>
+        <p class="sub">Healthcare navigation &amp; triage. Tell me what you need.</p>
+      </div>
+      <div class="auth-bar" id="authBar">
+        <span class="prompts-left" id="promptsLeft"></span>
+        <div id="authLoggedOut">
+          <div class="auth-dropdown-wrap">
+            <button type="button" class="auth-trigger" id="authTriggerSignIn">Sign in</button>
+            <button type="button" class="auth-trigger" id="authTriggerSignUp">Sign up</button>
+            <div class="auth-provider-dropdown" id="authProviderDropdown">
+              <a href="/auth/login/google" class="btn-login">Google</a>
+              <a href="/auth/login/github" class="btn-login">GitHub</a>
+              <a href="/auth/login/yahoo" class="btn-login">Yahoo</a>
+            </div>
+          </div>
+        </div>
+        <div id="authLoggedIn" style="display:none;">
+          <span class="user-email" id="userEmail"></span>
+          <button type="button" class="btn-logout" id="btnLogout">Logout</button>
+        </div>
+      </div>
+    </div>
   </header>
 
   <div class="chat" id="chat">
@@ -235,9 +328,82 @@
     const chat = document.getElementById('chat');
     const input = document.getElementById('input');
     const sendBtn = document.getElementById('sendBtn');
+    const ANON_STORAGE_KEY = 'careflow_anon_id';
 
     let userId = 'user-local-test';
     let sessionId = null;
+    let remainingPrompts = null;
+
+    function getOrCreateAnonId() {
+      var id = localStorage.getItem(ANON_STORAGE_KEY);
+      if (!id) {
+        id = 'anon_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+        localStorage.setItem(ANON_STORAGE_KEY, id);
+      }
+      return id;
+    }
+
+    function updatePromptsLeft(n) {
+      remainingPrompts = n;
+      var el = document.getElementById('promptsLeft');
+      if (!el) return;
+      if (n === null || n === undefined) { el.textContent = ''; return; }
+      if (n > 99) el.textContent = 'Many messages left';
+      else if (n === 0) el.textContent = 'No messages left — sign in for more';
+      else el.textContent = n + ' message' + (n !== 1 ? 's' : '') + ' left';
+    }
+
+    function setAuthUI(loggedIn, email) {
+      document.getElementById('authLoggedOut').style.display = loggedIn ? 'none' : 'block';
+      document.getElementById('authLoggedIn').style.display = loggedIn ? 'block' : 'none';
+      if (email) document.getElementById('userEmail').textContent = email;
+    }
+
+    async function loadAuth() {
+      try {
+        var res = await fetch('/auth/me', { credentials: 'include' });
+        if (res.ok) {
+          var data = await res.json();
+          userId = data.user_id;
+          setAuthUI(true, data.email || '');
+          updatePromptsLeft(data.is_tester ? 99 : null);
+          return;
+        }
+      } catch (e) {}
+      userId = getOrCreateAnonId();
+      setAuthUI(false);
+      updatePromptsLeft(6);
+    }
+
+    document.getElementById('btnLogout').onclick = async function() {
+      try {
+        await fetch('/auth/logout', { method: 'POST', credentials: 'include' });
+      } catch (e) {}
+      userId = getOrCreateAnonId();
+      sessionId = null;
+      setAuthUI(false);
+      updatePromptsLeft(6);
+    };
+
+    (function() {
+      var dropdown = document.getElementById('authProviderDropdown');
+      var wrap = dropdown && dropdown.closest('.auth-dropdown-wrap');
+      function toggle() {
+        if (dropdown) dropdown.classList.toggle('open');
+      }
+      function close() {
+        if (dropdown) dropdown.classList.remove('open');
+      }
+      if (document.getElementById('authTriggerSignIn')) {
+        document.getElementById('authTriggerSignIn').addEventListener('click', toggle);
+      }
+      if (document.getElementById('authTriggerSignUp')) {
+        document.getElementById('authTriggerSignUp').addEventListener('click', toggle);
+      }
+      document.addEventListener('click', function(e) {
+        if (wrap && !wrap.contains(e.target)) close();
+      });
+    })();
 
     function escapeHtml(s) {
       const div = document.createElement('div');
@@ -1341,6 +1507,7 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
+          credentials: 'include',
         });
         const raw = await res.text();
         let data;
@@ -1363,6 +1530,8 @@
         }
 
         if (data.session_id) sessionId = data.session_id;
+        if (data.remaining_prompts !== undefined) updatePromptsLeft(data.remaining_prompts);
+        if (data.remaining_prompts === 0) setAuthUI(false);
 
         const actionLabels = {
           emergency_services: 'Show nearby ambulances & hospitals',
@@ -1392,7 +1561,15 @@
         send();
       }
     });
-    input.focus();
+
+    loadAuth().then(function() {
+      var params = new URLSearchParams(window.location.search);
+      if (params.get('auth_error')) {
+        addMsg('Login was cancelled or failed. You can try again or continue as guest.', false);
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+      input.focus();
+    });
   </script>
 </body>
 </html>

@@ -3,7 +3,7 @@ import logging
 import uuid
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
@@ -11,6 +11,7 @@ from app.db.models import User, Session as SessionModel
 from app.schemas.triage import TriageRequest, TriageResponse
 from app.core.router import route_input
 from app.core.severity import calculate_severity
+from app.core.auth_utils import get_current_user_from_request, get_message_limit_for_user
 from app.config import settings
 
 router = APIRouter()
@@ -77,10 +78,13 @@ def _route_to_action(route: str) -> str:
 
 
 @router.post("/", response_model=TriageResponse)
-async def create_triage(request: TriageRequest, db: Session = Depends(get_db)):
+async def create_triage(http_request: Request, request: TriageRequest, db: Session = Depends(get_db)):
     """Main triage: LangGraph routing, session limits, severity scoring, recommended action."""
+    cookie_user_id, _, _ = get_current_user_from_request(http_request)
+    effective_user_id = cookie_user_id if cookie_user_id else request.user_id
+
     try:
-        user = db.query(User).filter(User.id == request.user_id).first()
+        user = db.query(User).filter(User.id == effective_user_id).first()
         abuse_strikes = user.abuse_strikes if user else 0
     except Exception as e:
         logger.exception("Database error loading user")
@@ -93,7 +97,8 @@ async def create_triage(request: TriageRequest, db: Session = Depends(get_db)):
             },
         )
 
-    session, session_error = _get_or_create_session(db, request.user_id)
+    limit = get_message_limit_for_user(effective_user_id, user)
+    session, session_error = _get_or_create_session(db, effective_user_id)
     if session_error:
         return TriageResponse(
             session_id=session.id if session else "none",
@@ -103,18 +108,19 @@ async def create_triage(request: TriageRequest, db: Session = Depends(get_db)):
             message=session_error,
         )
 
-    if session.message_count >= settings.max_messages_per_session:
+    if session.message_count >= limit:
+        msg = "You've used your 6 free messages. Sign in to get 20 messages." if limit <= 6 else "You've reached the message limit. Sign in for more messages."
         return TriageResponse(
             session_id=session.id,
             severity_medical="M0",
             severity_psychological="P0",
             recommended_action="blocked",
-            message="Maximum messages per session reached. Please start a new session.",
+            message=msg,
         )
 
     try:
         result = await route_input(
-            user_id=request.user_id,
+            user_id=effective_user_id,
             message=request.message,
             session_id=request.session_id or session.id,
             abuse_strikes=abuse_strikes,

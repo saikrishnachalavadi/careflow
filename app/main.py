@@ -2,7 +2,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
-from app.api import triage, chat, emergency, doctors, pharmacy, labs, mental_health
+from app.api import triage, chat, emergency, doctors, pharmacy, labs, mental_health, auth
 from app.db.database import init_db
 
 app = FastAPI(
@@ -26,6 +26,7 @@ app.include_router(doctors.router, prefix="/doctors", tags=["Doctors"])
 app.include_router(pharmacy.router, prefix="/pharmacy", tags=["Pharmacy"])
 app.include_router(labs.router, prefix="/labs", tags=["Labs"])
 app.include_router(mental_health.router, prefix="/mental-health", tags=["Mental Health"])
+app.include_router(auth.router, prefix="/auth", tags=["Auth"])
 
 
 @app.get("/")

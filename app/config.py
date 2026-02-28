@@ -27,6 +27,24 @@ class Settings(BaseSettings):
     max_messages_per_session: int = 9999
     session_timeout_minutes: int = 10
 
+    # Prompt limits: anonymous vs logged-in vs tester
+    max_messages_anonymous: int = 6
+    max_messages_logged_in: int = 20
+    tester_emails: str = "saikrishnachalavadi@yahoo.com"  # comma-separated
+
+    # Auth: JWT secret (set in .env in production)
+    auth_secret_key: str = "careflow-dev-secret-change-in-production"
+    auth_cookie_name: str = "careflow_session"
+    auth_cookie_max_age_seconds: int = 86400 * 7  # 7 days
+
+    # OAuth (optional; set in .env to enable each provider)
+    google_client_id: Optional[str] = None
+    google_client_secret: Optional[str] = None
+    github_client_id: Optional[str] = None
+    github_client_secret: Optional[str] = None
+    yahoo_client_id: Optional[str] = None
+    yahoo_client_secret: Optional[str] = None
+
     # OTC limits
     max_otc_attempts: int = 3
 

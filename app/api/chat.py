@@ -6,7 +6,7 @@ import logging
 from datetime import datetime
 from typing import Optional, Tuple
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
@@ -14,6 +14,7 @@ from app.db.models import User, Session as SessionModel
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.core.router import route_input
 from app.core.severity import calculate_severity
+from app.core.auth_utils import get_current_user_from_request, get_message_limit_for_user
 from app.config import settings
 from app.api.triage import _get_or_create_session
 
@@ -178,31 +179,41 @@ def _user_message(
     return ("How can I help you today?", None)
 
 
+def _limit_reached_message(limit: int) -> str:
+    if limit <= 6:
+        return "You've used your 6 free messages. Sign in to get 20 messages."
+    return "You've reached the message limit for this session. Sign in for more messages."
+
+
 @router.post("/", response_model=ChatResponse)
-async def chat(request: ChatRequest, db: Session = Depends(get_db)):
+async def chat(http_request: Request, request: ChatRequest, db: Session = Depends(get_db)):
     """Chat endpoint: returns only a user-facing message and optional action. No severity/route exposed."""
+    # Resolve effective user: from auth cookie if logged in, else body user_id (anonymous)
+    cookie_user_id, _, _ = get_current_user_from_request(http_request)
+    effective_user_id = cookie_user_id if cookie_user_id else request.user_id
+
     try:
-        user = db.query(User).filter(User.id == request.user_id).first()
+        user = db.query(User).filter(User.id == effective_user_id).first()
         abuse_strikes = user.abuse_strikes if user else 0
     except Exception as e:
         logger.exception("Database error loading user")
         raise HTTPException(status_code=503, detail={"message": "Service temporarily unavailable.", "hint": str(e)})
 
-    session, session_error = _get_or_create_session(db, request.user_id)
+    limit = get_message_limit_for_user(effective_user_id, user)
+    session, session_error = _get_or_create_session(db, effective_user_id)
     if session_error:
-        return ChatResponse(message=session_error, action=None, session_id=session.id if session else "none")
-    if session.message_count >= settings.max_messages_per_session:
-        session.status = "CLOSED"
-        db.commit()
+        return ChatResponse(message=session_error, action=None, session_id=session.id if session else "none", remaining_prompts=None)
+    if session.message_count >= limit:
         return ChatResponse(
-            message="You've reached the message limit for this session. Send another message to start a fresh conversation.",
+            message=_limit_reached_message(limit),
             action=None,
             session_id=session.id,
+            remaining_prompts=0,
         )
 
     try:
         result = await route_input(
-            user_id=request.user_id,
+            user_id=effective_user_id,
             message=request.message,
             session_id=request.session_id or session.id,
             abuse_strikes=abuse_strikes,
@@ -219,14 +230,16 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
             user.abuse_strikes = result["abuse_strikes"]
             db.commit()
         msg, action = _user_message(request.message, route, "M0", "P0", block_reason, None)
-        return ChatResponse(message=msg, action=action, doctor_specialty=None, session_id=session.id)
+        remaining = limit - (session.message_count or 0)
+        return ChatResponse(message=msg, action=action, doctor_specialty=None, session_id=session.id, remaining_prompts=remaining)
 
     if route == "unclear":
         session.last_activity = datetime.utcnow()
         session.message_count = (session.message_count or 0) + 1
         db.commit()
         msg = await _generate_unclear_reply(request.message)
-        return ChatResponse(message=msg, action=None, doctor_specialty=None, session_id=session.id)
+        remaining = limit - session.message_count
+        return ChatResponse(message=msg, action=None, doctor_specialty=None, session_id=session.id, remaining_prompts=remaining)
 
     session.last_activity = datetime.utcnow()
     session.message_count = (session.message_count or 0) + 1
@@ -251,10 +264,12 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
         doctor_specialty=doctor_specialty,
         doctor_suggestion_text=doctor_suggestion_text,
     )
+    remaining = limit - session.message_count
     return ChatResponse(
         message=msg,
         action=action,
         doctor_specialty=doctor_specialty if action == "doctors" else None,
         doctor_suggestion_text=doctor_suggestion_text if action == "doctors" else None,
         session_id=session.id,
+        remaining_prompts=remaining,
     )
