@@ -66,10 +66,19 @@ async def signup(body: SignupRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Valid email required")
     if len(password) < 6:
         raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
-    if db.query(User).filter(User.username == username).first():
-        raise HTTPException(status_code=400, detail="Username already taken")
-    if db.query(User).filter(User.email == email).first():
-        raise HTTPException(status_code=400, detail="Email already registered")
+    try:
+        if db.query(User).filter(User.username == username).first():
+            raise HTTPException(status_code=400, detail="Username already taken")
+        if db.query(User).filter(User.email == email).first():
+            raise HTTPException(status_code=400, detail="Email already registered")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Signup check failed: %s", e)
+        raise HTTPException(
+            status_code=503,
+            detail="Database not ready for signup. Run the auth migration (see MIGRATION_AUTH.md).",
+        ) from e
     token = secrets.token_urlsafe(32)
     expires = datetime.now(timezone.utc) + timedelta(hours=24)
     user = User(
@@ -82,9 +91,17 @@ async def signup(body: SignupRequest, db: Session = Depends(get_db)):
         verification_token_expires=expires,
         auth_provider="password",
     )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
+    try:
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    except Exception as e:
+        db.rollback()
+        logger.exception("Signup create failed: %s", e)
+        raise HTTPException(
+            status_code=503,
+            detail="Database not ready for signup. Run the auth migration (see MIGRATION_AUTH.md).",
+        ) from e
     verification_url = f"{_verification_base_url()}/auth/verify?token={token}"
     send_verification_email(email, username, verification_url)
     return {"message": "Verification email sent. Check your inbox to activate your account."}
