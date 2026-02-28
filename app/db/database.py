@@ -15,11 +15,11 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 def init_db():
-    """Create tables if they don't exist. Call on startup."""
+    """Create tables if they don't exist. Add auth columns if missing (SQLite and PostgreSQL)."""
     Base.metadata.create_all(bind=engine)
-    # SQLite: add new auth columns if they don't exist (no-op if already present)
-    if settings.database_url.startswith("sqlite"):
-        with engine.connect() as conn:
+    is_sqlite = settings.database_url.strip().startswith("sqlite")
+    with engine.connect() as conn:
+        if is_sqlite:
             for stmt in [
                 "ALTER TABLE users ADD COLUMN username VARCHAR",
                 "ALTER TABLE users ADD COLUMN password_hash VARCHAR",
@@ -32,7 +32,29 @@ def init_db():
                     conn.commit()
                 except Exception:
                     conn.rollback()
-                    pass
+        else:
+            # PostgreSQL: ADD COLUMN IF NOT EXISTS (no-op if already present)
+            for stmt in [
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS username VARCHAR UNIQUE",
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash VARCHAR",
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified INTEGER DEFAULT 0",
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_token VARCHAR",
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_token_expires TIMESTAMP",
+            ]:
+                try:
+                    conn.execute(text(stmt))
+                    conn.commit()
+                except Exception:
+                    conn.rollback()
+            for stmt in [
+                "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_username ON users(username)",
+                "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_verification_token ON users(verification_token)",
+            ]:
+                try:
+                    conn.execute(text(stmt))
+                    conn.commit()
+                except Exception:
+                    conn.rollback()
 
 
 def get_db():
