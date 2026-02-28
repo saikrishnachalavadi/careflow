@@ -79,32 +79,39 @@ async def signup(body: SignupRequest, db: Session = Depends(get_db)):
             status_code=503,
             detail="Database not ready for signup. Run the auth migration (see MIGRATION_AUTH.md).",
         ) from e
-    token = secrets.token_urlsafe(32)
-    expires = datetime.now(timezone.utc) + timedelta(hours=24)
-    user = User(
-        id=str(uuid.uuid4()),
-        username=username,
-        email=email,
-        password_hash=hash_password(password),
-        email_verified=0,
-        verification_token=token,
-        verification_token_expires=expires,
-        auth_provider="password",
-    )
+
     try:
+        token = secrets.token_urlsafe(32)
+        expires = datetime.now(timezone.utc) + timedelta(hours=24)
+        password_hash = hash_password(password)
+        user = User(
+            id=str(uuid.uuid4()),
+            username=username,
+            email=email,
+            password_hash=password_hash,
+            email_verified=0,
+            verification_token=token,
+            verification_token_expires=expires,
+            auth_provider="password",
+        )
         db.add(user)
         db.commit()
         db.refresh(user)
+        verification_url = f"{_verification_base_url()}/auth/verify?token={token}"
+        try:
+            send_verification_email(email, username, verification_url)
+        except Exception as e:
+            logger.exception("Signup send_verification_email failed: %s", e)
+        return {"message": "Verification email sent. Check your inbox to activate your account."}
+    except HTTPException:
+        raise
     except Exception as e:
         db.rollback()
-        logger.exception("Signup create failed: %s", e)
+        logger.exception("Signup failed: %s", e)
         raise HTTPException(
-            status_code=503,
-            detail="Database not ready for signup. Run the auth migration (see MIGRATION_AUTH.md).",
+            status_code=500,
+            detail="Signup failed. Check server logs for details.",
         ) from e
-    verification_url = f"{_verification_base_url()}/auth/verify?token={token}"
-    send_verification_email(email, username, verification_url)
-    return {"message": "Verification email sent. Check your inbox to activate your account."}
 
 
 @router.get("/verify")

@@ -115,15 +115,28 @@ def generate_anonymous_id() -> str:
     return ANON_PREFIX + str(uuid.uuid4()).replace("-", "")[:24]
 
 
+# Bcrypt limits input to 72 bytes; truncate to avoid ValueError
+_BCRYPT_MAX_BYTES = 72
+
+
+def _truncate_password_for_bcrypt(password: str) -> str:
+    if not password:
+        return password
+    b = password.encode("utf-8")
+    if len(b) <= _BCRYPT_MAX_BYTES:
+        return password
+    return b[:_BCRYPT_MAX_BYTES].decode("utf-8", errors="ignore")
+
+
 def hash_password(password: str) -> str:
-    return pwd_ctx.hash(password)
+    return pwd_ctx.hash(_truncate_password_for_bcrypt(password))
 
 
 def verify_password(plain: str, hashed: str) -> bool:
     if not hashed:
         return False
     try:
-        return pwd_ctx.verify(plain, hashed)
+        return pwd_ctx.verify(_truncate_password_for_bcrypt(plain), hashed)
     except Exception:
         return False
 
