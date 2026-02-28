@@ -304,7 +304,7 @@
         </div>
         <div id="authLoggedIn" style="display:none;">
           <span class="user-email" id="userEmail"></span>
-          <a href="/auth/logout" class="btn-logout" id="btnLogout">Sign out</a>
+          <button type="button" class="btn-logout" id="btnLogout">Sign out</button>
         </div>
       </div>
     </div>
@@ -369,7 +369,7 @@
 
     async function loadAuth() {
       try {
-        var res = await fetch('/auth/me', { credentials: 'include' });
+        var res = await fetch('/auth/me', { credentials: 'include', cache: 'no-store' });
         if (res.ok) {
           var data = await res.json();
           userId = data.user_id;
@@ -379,6 +379,7 @@
         }
       } catch (e) {}
       userId = getOrCreateAnonId();
+      sessionId = null;
       setAuthUI(false);
       updatePromptsLeft(6);
     }
@@ -397,6 +398,24 @@
       document.addEventListener('click', function(e) {
         if (wrap && !wrap.contains(e.target)) close();
       });
+
+      var logoutBtn = document.getElementById('btnLogout');
+      if (logoutBtn) {
+        logoutBtn.addEventListener('click', async function(e) {
+          e.preventDefault();
+          try {
+            await fetch('/auth/logout', { method: 'POST', credentials: 'include' });
+          } catch (err) {
+            try { await fetch('/auth/logout', { credentials: 'include' }); } catch (_) {}
+          }
+          userId = getOrCreateAnonId();
+          sessionId = null;
+          setAuthUI(false);
+          updatePromptsLeft(6);
+          var chatEl = document.getElementById('chat');
+          chatEl.innerHTML = '<div class="msg bot"><div class="text">Hi! I\'m CareFlow. I can help with health-related questions—finding a doctor, pharmacy, lab tests, or emergency help. What do you need?</div></div>';
+        });
+      }
     })();
 
     function escapeHtml(s) {
@@ -1525,7 +1544,6 @@
 
         if (data.session_id) sessionId = data.session_id;
         if (data.remaining_prompts !== undefined) updatePromptsLeft(data.remaining_prompts);
-        if (data.remaining_prompts === 0) setAuthUI(false);
 
         const actionLabels = {
           emergency_services: 'Show nearby ambulances & hospitals',

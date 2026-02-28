@@ -223,6 +223,8 @@ async def callback(
 async def logout_post(response: Response):
     """Clear auth cookie and return OK (for fetch)."""
     clear_auth_cookie(response)
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
     return {"ok": True}
 
 
@@ -231,6 +233,8 @@ async def logout_get():
     """Clear auth cookie and redirect to /ui so the browser gets a fresh page with no session."""
     redir = RedirectResponse(url="/ui", status_code=302)
     clear_auth_cookie(redir)
+    redir.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    redir.headers["Pragma"] = "no-cache"
     return redir
 
 

@@ -57,25 +57,34 @@ def get_token_from_cookie(request: Request) -> Optional[str]:
     return request.cookies.get(settings.auth_cookie_name)
 
 
+def _is_secure_deployment() -> bool:
+    """True when deployed over HTTPS (e.g. Render). Cookie secure flag must match so set/clear work."""
+    return not (settings.database_url or "").strip().startswith("sqlite")
+
+
 def set_auth_cookie(response: Response, user_id: str, email: str, provider: str) -> None:
     """Set auth cookie as session-only (no max_age) so user must sign in again when they return."""
     token = create_jwt(user_id, email, provider)
+    secure = _is_secure_deployment()
     response.set_cookie(
         key=settings.auth_cookie_name,
         value=token,
         httponly=True,
+        secure=secure,
         samesite="lax",
         path="/",
     )
 
 
 def clear_auth_cookie(response: Response) -> None:
-    """Clear auth cookie using same path/httponly/samesite as set_cookie so browsers actually remove it."""
+    """Clear auth cookie using same path/httponly/samesite/secure as set_cookie so browsers actually remove it."""
+    secure = _is_secure_deployment()
     response.set_cookie(
         key=settings.auth_cookie_name,
         value="",
         max_age=0,
         httponly=True,
+        secure=secure,
         samesite="lax",
         path="/",
     )
