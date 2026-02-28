@@ -54,6 +54,7 @@
     .auth-bar .btn-login:hover { background: #e2e8f0; }
     .auth-bar .user-email { font-size: 0.85rem; opacity: 0.95; }
     .auth-bar .btn-logout {
+      display: inline-block;
       padding: 0.35rem 0.6rem;
       background: transparent;
       color: #fff;
@@ -61,8 +62,9 @@
       border-radius: 0.4rem;
       font-size: 0.8rem;
       cursor: pointer;
+      text-decoration: none;
     }
-    .auth-bar .btn-logout:hover { background: rgba(255,255,255,0.15); }
+    .auth-bar .btn-logout:hover { background: rgba(255,255,255,0.15); color: #fff; }
     .auth-bar .auth-trigger {
       padding: 0.35rem 0.6rem;
       background: transparent;
@@ -292,8 +294,7 @@
         <span class="prompts-left" id="promptsLeft"></span>
         <div id="authLoggedOut">
           <div class="auth-dropdown-wrap">
-            <button type="button" class="auth-trigger" id="authTriggerSignIn">Sign in</button>
-            <button type="button" class="auth-trigger" id="authTriggerSignUp">Sign up</button>
+            <button type="button" class="auth-trigger" id="authTriggerLogin">Log in</button>
             <div class="auth-provider-dropdown" id="authProviderDropdown">
               <a href="/auth/login/google" class="btn-login">Google</a>
               <a href="/auth/login/github" class="btn-login">GitHub</a>
@@ -303,7 +304,7 @@
         </div>
         <div id="authLoggedIn" style="display:none;">
           <span class="user-email" id="userEmail"></span>
-          <button type="button" class="btn-logout" id="btnLogout">Logout</button>
+          <a href="/auth/logout" class="btn-logout" id="btnLogout">Logout</a>
         </div>
       </div>
     </div>
@@ -376,16 +377,6 @@
       updatePromptsLeft(6);
     }
 
-    document.getElementById('btnLogout').onclick = async function() {
-      try {
-        await fetch('/auth/logout', { method: 'POST', credentials: 'include' });
-      } catch (e) {}
-      userId = getOrCreateAnonId();
-      sessionId = null;
-      setAuthUI(false);
-      updatePromptsLeft(6);
-    };
-
     (function() {
       var dropdown = document.getElementById('authProviderDropdown');
       var wrap = dropdown && dropdown.closest('.auth-dropdown-wrap');
@@ -395,12 +386,8 @@
       function close() {
         if (dropdown) dropdown.classList.remove('open');
       }
-      if (document.getElementById('authTriggerSignIn')) {
-        document.getElementById('authTriggerSignIn').addEventListener('click', toggle);
-      }
-      if (document.getElementById('authTriggerSignUp')) {
-        document.getElementById('authTriggerSignUp').addEventListener('click', toggle);
-      }
+      var loginBtn = document.getElementById('authTriggerLogin');
+      if (loginBtn) loginBtn.addEventListener('click', toggle);
       document.addEventListener('click', function(e) {
         if (wrap && !wrap.contains(e.target)) close();
       });

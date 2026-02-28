@@ -195,9 +195,9 @@ async def callback(
         return RedirectResponse(url="/ui?auth_error=no_email", status_code=302)
 
     email = email.lower()
+    # Persist subscriber in database (PostgreSQL on Render when DATABASE_URL is set)
     user = db.query(User).filter(User.email == email).first()
     if not user:
-        # Use a placeholder phone for OAuth-only users (keeps old DBs with NOT NULL phone working)
         user = User(
             id=str(uuid.uuid4()),
             email=email,
@@ -218,10 +218,18 @@ async def callback(
 
 
 @router.post("/logout")
-async def logout(response: Response):
-    """Clear auth cookie."""
+async def logout_post(response: Response):
+    """Clear auth cookie and return OK (for fetch)."""
     clear_auth_cookie(response)
     return {"ok": True}
+
+
+@router.get("/logout")
+async def logout_get():
+    """Clear auth cookie and redirect to /ui so the browser gets a fresh page with no session."""
+    redir = RedirectResponse(url="/ui", status_code=302)
+    clear_auth_cookie(redir)
+    return redir
 
 
 @router.get("/me")
