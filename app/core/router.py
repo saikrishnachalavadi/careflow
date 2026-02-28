@@ -415,9 +415,9 @@ def check_greeting(state: CareFlowState) -> CareFlowState:
 # ─── Intent Override Keywords ────────────────────────────────────
 DIRECT_INTENT_MAP = {
     "doctor_handoff": [
-        "i want a doctor", "find me a doctor", "book a doctor",
-        "need a doctor", "talk to a doctor", "see a doctor",
-        "consult a doctor", "doctor please",
+        "doctor", "doctors", "i want a doctor", "i want doctor", "find me a doctor", "book a doctor",
+        "need a doctor", "need doctor", "talk to a doctor", "see a doctor",
+        "consult a doctor", "doctor please", "find doctor", "get doctor", "find me doctor",
     ],
     "pharmacy_handoff": [
         "i need medicine", "find a pharmacy", "buy medicine",
