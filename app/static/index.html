@@ -36,66 +36,18 @@
       gap: 0.75rem;
       flex-wrap: wrap;
     }
-    .auth-bar .prompts-left {
-      font-size: 0.8rem;
-      opacity: 0.95;
-    }
-    .auth-bar .btn-login {
-      display: inline-block;
+    .auth-bar .prompts-left { font-size: 0.8rem; opacity: 0.95; }
+    .auth-bar .auth-link {
       padding: 0.35rem 0.6rem;
-      background: #fff;
-      color: #16213e;
-      border: none;
-      border-radius: 0.4rem;
-      font-size: 0.8rem;
-      cursor: pointer;
-      text-decoration: none;
-    }
-    .auth-bar .btn-login:hover { background: #e2e8f0; }
-    .auth-bar .user-email { font-size: 0.85rem; opacity: 0.95; }
-    .auth-bar .btn-logout {
-      display: inline-block;
-      padding: 0.35rem 0.6rem;
-      background: transparent;
+      background: rgba(255,255,255,0.2);
       color: #fff;
       border: 1px solid rgba(255,255,255,0.5);
       border-radius: 0.4rem;
       font-size: 0.8rem;
-      cursor: pointer;
       text-decoration: none;
     }
-    .auth-bar .btn-logout:hover { background: rgba(255,255,255,0.15); color: #fff; }
-    .auth-bar .auth-trigger {
-      padding: 0.35rem 0.6rem;
-      background: transparent;
-      color: #fff;
-      border: 1px solid rgba(255,255,255,0.6);
-      border-radius: 0.4rem;
-      font-size: 0.8rem;
-      cursor: pointer;
-    }
-    .auth-bar .auth-trigger:hover { background: rgba(255,255,255,0.15); }
-    .auth-dropdown-wrap { position: relative; display: inline-block; }
-    .auth-provider-dropdown {
-      display: none;
-      position: absolute;
-      top: 100%;
-      right: 0;
-      margin-top: 0.25rem;
-      min-width: 10rem;
-      padding: 0.5rem;
-      background: #fff;
-      border-radius: 0.5rem;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-      z-index: 100;
-    }
-    .auth-provider-dropdown.open { display: block; }
-    .auth-provider-dropdown .btn-login {
-      display: block;
-      margin-bottom: 0.25rem;
-      text-align: center;
-    }
-    .auth-provider-dropdown .btn-login:last-child { margin-bottom: 0; }
+    .auth-bar .auth-link:hover { background: rgba(255,255,255,0.3); color: #fff; }
+    .auth-bar .user-email { font-size: 0.85rem; opacity: 0.95; }
     .chat {
       flex: 1;
       overflow-y: auto;
@@ -290,21 +242,16 @@
         <h1>CareFlow</h1>
         <p class="sub">Healthcare navigation &amp; triage. Tell me what you need.</p>
       </div>
-      <div class="auth-bar" id="authBar">
+      <div class="auth-bar">
         <span class="prompts-left" id="promptsLeft"></span>
         <div id="authLoggedOut">
-          <div class="auth-dropdown-wrap">
-            <button type="button" class="auth-trigger" id="authTriggerLogin">Sign in</button>
-            <div class="auth-provider-dropdown" id="authProviderDropdown">
-              <a href="/auth/login/google" class="btn-login">Google</a>
-              <a href="/auth/login/github" class="btn-login">GitHub</a>
-              <a href="/auth/login/yahoo" class="btn-login">Yahoo</a>
-            </div>
-          </div>
+          <a href="/auth/login/google" class="auth-link">Sign in with Google</a>
+          <a href="/auth/login/github" class="auth-link">Sign in with GitHub</a>
+          <a href="/auth/login/yahoo" class="auth-link">Sign in with Yahoo</a>
         </div>
         <div id="authLoggedIn" style="display:none;">
           <span class="user-email" id="userEmail"></span>
-          <button type="button" class="btn-logout" id="btnLogout">Sign out</button>
+          <a href="/auth/logout" class="auth-link">Sign out</a>
         </div>
       </div>
     </div>
@@ -331,7 +278,7 @@
     const sendBtn = document.getElementById('sendBtn');
     const ANON_STORAGE_KEY = 'careflow_anon_id';
 
-    let userId = 'user-local-test';
+    let userId;
     let sessionId = null;
     let remainingPrompts = null;
 
@@ -354,17 +301,11 @@
       else el.textContent = n + ' message' + (n !== 1 ? 's' : '') + ' left';
     }
 
-    function setAuthUI(loggedIn, email, provider) {
+    function setAuthUI(loggedIn, email) {
       document.getElementById('authLoggedOut').style.display = loggedIn ? 'none' : 'block';
       document.getElementById('authLoggedIn').style.display = loggedIn ? 'block' : 'none';
       var emailEl = document.getElementById('userEmail');
-      if (!loggedIn || !email) {
-        emailEl.textContent = '';
-        return;
-      }
-      var p = provider ? (provider.charAt(0).toUpperCase() + provider.slice(1)) : '';
-      var label = p ? 'Signed in with ' + p + ' — ' + email : email;
-      emailEl.textContent = label;
+      emailEl.textContent = loggedIn && email ? email : '';
     }
 
     async function loadAuth() {
@@ -373,7 +314,7 @@
         if (res.ok) {
           var data = await res.json();
           userId = data.user_id;
-          setAuthUI(true, data.email || '', data.provider || '');
+          setAuthUI(true, data.email || '');
           updatePromptsLeft(data.is_tester ? 99 : null);
           return;
         }
@@ -383,40 +324,6 @@
       setAuthUI(false);
       updatePromptsLeft(6);
     }
-
-    (function() {
-      var dropdown = document.getElementById('authProviderDropdown');
-      var wrap = dropdown && dropdown.closest('.auth-dropdown-wrap');
-      function toggle() {
-        if (dropdown) dropdown.classList.toggle('open');
-      }
-      function close() {
-        if (dropdown) dropdown.classList.remove('open');
-      }
-      var loginBtn = document.getElementById('authTriggerLogin');
-      if (loginBtn) loginBtn.addEventListener('click', toggle);
-      document.addEventListener('click', function(e) {
-        if (wrap && !wrap.contains(e.target)) close();
-      });
-
-      var logoutBtn = document.getElementById('btnLogout');
-      if (logoutBtn) {
-        logoutBtn.addEventListener('click', async function(e) {
-          e.preventDefault();
-          try {
-            await fetch('/auth/logout', { method: 'POST', credentials: 'include' });
-          } catch (err) {
-            try { await fetch('/auth/logout', { credentials: 'include' }); } catch (_) {}
-          }
-          userId = getOrCreateAnonId();
-          sessionId = null;
-          setAuthUI(false);
-          updatePromptsLeft(6);
-          var chatEl = document.getElementById('chat');
-          chatEl.innerHTML = '<div class="msg bot"><div class="text">Hi! I\'m CareFlow. I can help with health-related questions—finding a doctor, pharmacy, lab tests, or emergency help. What do you need?</div></div>';
-        });
-      }
-    })();
 
     function escapeHtml(s) {
       const div = document.createElement('div');
@@ -1574,14 +1481,17 @@
       }
     });
 
-    loadAuth().then(function() {
-      var params = new URLSearchParams(window.location.search);
-      if (params.get('auth_error')) {
-        addMsg('Login was cancelled or failed. You can try again or continue as guest.', false);
-        window.history.replaceState({}, '', window.location.pathname);
-      }
-      input.focus();
-    });
+    (function init() {
+      userId = getOrCreateAnonId();
+      loadAuth().then(function() {
+        var params = new URLSearchParams(window.location.search);
+        if (params.get('auth_error')) {
+          addMsg('Login was cancelled or failed. You can try again or continue as guest.', false);
+          window.history.replaceState({}, '', window.location.pathname);
+        }
+        input.focus();
+      });
+    })();
   </script>
 </body>
 </html>

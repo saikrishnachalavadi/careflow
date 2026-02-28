@@ -219,18 +219,9 @@ async def callback(
     return redir
 
 
-@router.post("/logout")
-async def logout_post(response: Response):
-    """Clear auth cookie and return OK (for fetch)."""
-    clear_auth_cookie(response)
-    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
-    response.headers["Pragma"] = "no-cache"
-    return {"ok": True}
-
-
 @router.get("/logout")
-async def logout_get():
-    """Clear auth cookie and redirect to /ui so the browser gets a fresh page with no session."""
+async def logout():
+    """Clear auth cookie and redirect to /ui. Full page navigation so browser reliably drops the cookie."""
     redir = RedirectResponse(url="/ui", status_code=302)
     clear_auth_cookie(redir)
     redir.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
@@ -240,14 +231,10 @@ async def logout_get():
 
 @router.get("/me")
 async def me(request: Request, response: Response, db: Session = Depends(get_db)):
-    """
-    Return current user from cookie or 401. Used by frontend to know if logged in and remaining prompts.
-    Only returns 200 when the auth cookie matches the DB user (email/provider); otherwise clears cookie and 401
-    so we never show a wrong or stale identity.
-    """
+    """Return current user from cookie (DB is single source of truth) or 401."""
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
     response.headers["Pragma"] = "no-cache"
-    user_id, jwt_email, jwt_provider = get_current_user_from_request(request)
+    user_id, _, _ = get_current_user_from_request(request)
     if not user_id:
         raise HTTPException(status_code=401, detail="Not logged in")
 
@@ -256,21 +243,11 @@ async def me(request: Request, response: Response, db: Session = Depends(get_db)
         clear_auth_cookie(response)
         raise HTTPException(status_code=401, detail="User not found")
 
-    # Require JWT identity to match DB so we never show mismatched name/email (e.g. stale or wrong cookie)
-    db_provider = (user.auth_provider or jwt_provider or "").lower()
-    jwt_provider_norm = (jwt_provider or "").lower()
-    if (jwt_email is not None and jwt_email != user.email) or (
-        jwt_provider_norm and db_provider and jwt_provider_norm != db_provider
-    ):
-        clear_auth_cookie(response)
-        raise HTTPException(status_code=401, detail="Session out of sync")
-
     from app.core.auth_utils import is_tester_email
     tester = is_tester_email(user.email)
-
     return {
         "user_id": user.id,
         "email": user.email,
-        "provider": user.auth_provider or jwt_provider,
+        "provider": user.auth_provider or "",
         "is_tester": tester,
     }
