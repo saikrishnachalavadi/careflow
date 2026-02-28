@@ -54,18 +54,29 @@ def _verification_base_url() -> str:
 # ----- Sign up (email verification) and Sign in (username/password) -----
 
 
+def _password_for_bcrypt(raw: str) -> str:
+    """Bcrypt accepts max 72 bytes; truncate to avoid ValueError."""
+    if not raw:
+        return raw
+    b = raw.encode("utf-8")
+    if len(b) <= 72:
+        return raw
+    return b[:72].decode("utf-8", errors="ignore")
+
+
 @router.post("/signup")
 async def signup(body: SignupRequest, db: Session = Depends(get_db)):
     """Create user with email unverified; send verification email."""
     username = (body.username or "").strip()
     email = (body.email or "").strip().lower()
-    password = body.password or ""
+    raw_password = body.password or ""
     if not username or len(username) < 2:
         raise HTTPException(status_code=400, detail="Username must be at least 2 characters")
     if not email or "@" not in email:
         raise HTTPException(status_code=400, detail="Valid email required")
-    if len(password) < 6:
-        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    if not raw_password or len(raw_password) < 1 or len(raw_password) > 10:
+        raise HTTPException(status_code=400, detail="Password must be 1–10 characters")
+    password = _password_for_bcrypt(raw_password)
     try:
         if db.query(User).filter(User.username == username).first():
             raise HTTPException(status_code=400, detail="Username already taken")
@@ -136,8 +147,11 @@ async def verify(token: Optional[str] = None, db: Session = Depends(get_db)):
 async def login_post(body: LoginRequest, response: Response, db: Session = Depends(get_db)):
     """Sign in with username and password."""
     username = (body.username or "").strip()
-    password = body.password or ""
+    password = (body.password or "").strip()
     if not username or not password:
+        raise HTTPException(status_code=400, detail="Username and password required")
+    if len(password) > 10:
+        raise HTTPException(status_code=400, detail="Password must be 1–10 characters")
         raise HTTPException(status_code=400, detail="Username and password required")
     user = db.query(User).filter(User.username == username).first()
     if not user:
