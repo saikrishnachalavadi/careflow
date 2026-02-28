@@ -70,7 +70,15 @@ def set_auth_cookie(response: Response, user_id: str, email: str, provider: str)
 
 
 def clear_auth_cookie(response: Response) -> None:
-    response.delete_cookie(key=settings.auth_cookie_name, path="/")
+    """Clear auth cookie using same path/httponly/samesite as set_cookie so browsers actually remove it."""
+    response.set_cookie(
+        key=settings.auth_cookie_name,
+        value="",
+        max_age=0,
+        httponly=True,
+        samesite="lax",
+        path="/",
+    )
 
 
 def get_current_user_from_request(request: Request) -> Tuple[Optional[str], Optional[str], Optional[str]]:

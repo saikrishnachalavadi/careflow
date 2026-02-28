@@ -362,7 +362,8 @@
         emailEl.textContent = '';
         return;
       }
-      var label = provider ? email + ' (' + (provider.charAt(0).toUpperCase() + provider.slice(1)) + ')' : email;
+      var p = provider ? (provider.charAt(0).toUpperCase() + provider.slice(1)) : '';
+      var label = p ? 'Signed in with ' + p + ' — ' + email : email;
       emailEl.textContent = label;
     }
 
