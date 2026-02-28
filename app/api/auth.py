@@ -238,16 +238,28 @@ async def logout_get():
 async def me(request: Request, response: Response, db: Session = Depends(get_db)):
     """
     Return current user from cookie or 401. Used by frontend to know if logged in and remaining prompts.
+    Only returns 200 when the auth cookie matches the DB user (email/provider); otherwise clears cookie and 401
+    so we never show a wrong or stale identity.
     """
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
     response.headers["Pragma"] = "no-cache"
-    user_id, email, provider = get_current_user_from_request(request)
-    if not user_id or not email:
+    user_id, jwt_email, jwt_provider = get_current_user_from_request(request)
+    if not user_id:
         raise HTTPException(status_code=401, detail="Not logged in")
 
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
+        clear_auth_cookie(response)
         raise HTTPException(status_code=401, detail="User not found")
+
+    # Require JWT identity to match DB so we never show mismatched name/email (e.g. stale or wrong cookie)
+    db_provider = (user.auth_provider or jwt_provider or "").lower()
+    jwt_provider_norm = (jwt_provider or "").lower()
+    if (jwt_email is not None and jwt_email != user.email) or (
+        jwt_provider_norm and db_provider and jwt_provider_norm != db_provider
+    ):
+        clear_auth_cookie(response)
+        raise HTTPException(status_code=401, detail="Session out of sync")
 
     from app.core.auth_utils import is_tester_email
     tester = is_tester_email(user.email)
@@ -255,6 +267,6 @@ async def me(request: Request, response: Response, db: Session = Depends(get_db)
     return {
         "user_id": user.id,
         "email": user.email,
-        "provider": user.auth_provider or provider,
+        "provider": user.auth_provider or jwt_provider,
         "is_tester": tester,
     }
