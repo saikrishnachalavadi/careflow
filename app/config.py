@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     # Auth: JWT secret (set in .env in production)
     auth_secret_key: str = "careflow-dev-secret-change-in-production"
     auth_cookie_name: str = "careflow_session"
-    auth_cookie_max_age_seconds: int = 86400 * 7  # 7 days
+    auth_cookie_max_age_seconds: int = 86400 * 7  # used only for JWT exp claim; cookie is session-only (no max_age)
 
     # OAuth (optional; set in .env to enable each provider)
     google_client_id: Optional[str] = None

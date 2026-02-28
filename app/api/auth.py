@@ -208,9 +208,11 @@ async def callback(
         db.commit()
         db.refresh(user)
     else:
-        if not user.auth_provider:
-            user.auth_provider = provider
-            db.commit()
+        # Same person signing in with a different provider: update email and provider so display matches current login
+        user.email = email
+        user.auth_provider = provider
+        db.commit()
+        db.refresh(user)
 
     redir = RedirectResponse(url="/ui", status_code=302)
     set_auth_cookie(redir, user.id, user.email, user.auth_provider or provider)

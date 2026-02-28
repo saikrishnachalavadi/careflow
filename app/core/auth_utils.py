@@ -58,11 +58,11 @@ def get_token_from_cookie(request: Request) -> Optional[str]:
 
 
 def set_auth_cookie(response: Response, user_id: str, email: str, provider: str) -> None:
+    """Set auth cookie as session-only (no max_age) so user must sign in again when they return."""
     token = create_jwt(user_id, email, provider)
     response.set_cookie(
         key=settings.auth_cookie_name,
         value=token,
-        max_age=settings.auth_cookie_max_age_seconds,
         httponly=True,
         samesite="lax",
         path="/",

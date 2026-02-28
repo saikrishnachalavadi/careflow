@@ -294,7 +294,7 @@
         <span class="prompts-left" id="promptsLeft"></span>
         <div id="authLoggedOut">
           <div class="auth-dropdown-wrap">
-            <button type="button" class="auth-trigger" id="authTriggerLogin">Log in</button>
+            <button type="button" class="auth-trigger" id="authTriggerLogin">Sign in</button>
             <div class="auth-provider-dropdown" id="authProviderDropdown">
               <a href="/auth/login/google" class="btn-login">Google</a>
               <a href="/auth/login/github" class="btn-login">GitHub</a>
@@ -304,7 +304,7 @@
         </div>
         <div id="authLoggedIn" style="display:none;">
           <span class="user-email" id="userEmail"></span>
-          <a href="/auth/logout" class="btn-logout" id="btnLogout">Logout</a>
+          <a href="/auth/logout" class="btn-logout" id="btnLogout">Sign out</a>
         </div>
       </div>
     </div>
@@ -354,11 +354,16 @@
       else el.textContent = n + ' message' + (n !== 1 ? 's' : '') + ' left';
     }
 
-    function setAuthUI(loggedIn, email) {
+    function setAuthUI(loggedIn, email, provider) {
       document.getElementById('authLoggedOut').style.display = loggedIn ? 'none' : 'block';
       document.getElementById('authLoggedIn').style.display = loggedIn ? 'block' : 'none';
       var emailEl = document.getElementById('userEmail');
-      emailEl.textContent = loggedIn && email ? email : '';
+      if (!loggedIn || !email) {
+        emailEl.textContent = '';
+        return;
+      }
+      var label = provider ? email + ' (' + (provider.charAt(0).toUpperCase() + provider.slice(1)) + ')' : email;
+      emailEl.textContent = label;
     }
 
     async function loadAuth() {
@@ -367,7 +372,7 @@
         if (res.ok) {
           var data = await res.json();
           userId = data.user_id;
-          setAuthUI(true, data.email || '');
+          setAuthUI(true, data.email || '', data.provider || '');
           updatePromptsLeft(data.is_tester ? 99 : null);
           return;
         }
