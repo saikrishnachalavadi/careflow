@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     auth_secret_key: str = "careflow-dev-secret-change-in-production"
     auth_cookie_name: str = "careflow_session"
     auth_cookie_max_age_seconds: int = 86400 * 7  # used only for JWT exp claim; cookie is session-only (no max_age)
+    # OAuth redirect: set in production (e.g. https://careflow-ypfn.onrender.com) so redirect_uri matches exactly what you registered in Google/GitHub/Yahoo consoles
+    public_base_url: Optional[str] = None
 
     # OAuth (optional; set in .env to enable each provider)
     google_client_id: Optional[str] = None

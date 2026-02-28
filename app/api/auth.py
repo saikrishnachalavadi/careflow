@@ -50,14 +50,24 @@ OAUTH_CONFIG = {
 
 
 def _get_redirect_uri(request: Request, provider: str) -> str:
-    # Behind a proxy (e.g. Render), use forwarded headers so redirect_uri is https and public host
-    forwarded_proto = request.headers.get("x-forwarded-proto")
-    host = request.headers.get("x-forwarded-host") or request.headers.get("host")
-    if forwarded_proto and host:
+    # Prefer explicit base URL (set PUBLIC_BASE_URL in production so it matches OAuth app config exactly)
+    base = (settings.public_base_url or "").strip().rstrip("/")
+    if base:
+        out = f"{base}/auth/callback/{provider}"
+        logger.info("OAuth redirect_uri (from PUBLIC_BASE_URL): %s", out)
+        return out
+    # Else build from request; behind Render/proxy use forwarded headers
+    forwarded_proto = (request.headers.get("x-forwarded-proto") or "").strip().lower()
+    host = (request.headers.get("x-forwarded-host") or request.headers.get("host") or "").strip()
+    if host and forwarded_proto:
         base = f"{forwarded_proto}://{host}".rstrip("/")
+    elif host and ("onrender.com" in host or "ngrok" in host):
+        base = f"https://{host}".rstrip("/")
     else:
         base = str(request.base_url).rstrip("/")
-    return f"{base}/auth/callback/{provider}"
+    out = f"{base}/auth/callback/{provider}"
+    logger.info("OAuth redirect_uri (from request): %s", out)
+    return out
 
 
 def _get_oauth_client(provider: str) -> tuple:
@@ -123,20 +133,19 @@ async def callback(
     cfg = OAUTH_CONFIG[provider]
     redirect_uri = _get_redirect_uri(request, provider)
 
-    # Exchange code for access_token
-    # Yahoo requires Basic auth (client_id:client_secret); others use form body
+    # Exchange code for access_token (redirect_uri must match exactly what was sent to the provider)
+    token_payload = {
+        "code": code,
+        "redirect_uri": redirect_uri,
+        "grant_type": "authorization_code",
+    }
+    token_headers = {"Accept": "application/json", "Content-Type": "application/x-www-form-urlencoded"}
     async with httpx.AsyncClient() as client:
-        token_payload = {
-            "code": code,
-            "redirect_uri": redirect_uri,
-            "grant_type": "authorization_code",
-        }
         if provider == "yahoo":
-            # Yahoo token endpoint expects HTTP Basic auth per their OAuth 2.0 guide
             token_resp = await client.post(
                 cfg["token_url"],
                 data=token_payload,
-                headers={"Accept": "application/json", "Content-Type": "application/x-www-form-urlencoded"},
+                headers=token_headers,
                 auth=(client_id, client_secret),
             )
         else:
@@ -145,10 +154,13 @@ async def callback(
             token_resp = await client.post(
                 cfg["token_url"],
                 data=token_payload,
-                headers={"Accept": "application/json"},
+                headers=token_headers,
             )
     if token_resp.status_code != 200:
-        logger.warning("Token exchange failed %s: %s", token_resp.status_code, token_resp.text)
+        logger.warning(
+            "Token exchange failed provider=%s status=%s body=%s redirect_uri=%s",
+            provider, token_resp.status_code, token_resp.text[:200], redirect_uri,
+        )
         return RedirectResponse(url="/ui?auth_error=token", status_code=302)
 
     token_data = token_resp.json()
