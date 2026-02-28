@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
+import jwt
 from app.config import settings
 from app.core.auth_utils import (
     clear_auth_cookie,
@@ -44,7 +45,8 @@ OAUTH_CONFIG = {
         "auth_url": "https://api.login.yahoo.com/oauth2/request_auth",
         "token_url": "https://api.login.yahoo.com/oauth2/get_token",
         "userinfo_url": "https://api.login.yahoo.com/openid/v1/userinfo",
-        "scope": "openid email profile",
+        # Only "openid" is required; "email"/"profile" can cause invalid_scope unless enabled in Yahoo app API Permissions
+        "scope": "openid",
     },
 }
 
@@ -199,6 +201,19 @@ async def callback(
                             break
     elif provider == "yahoo":
         email = (user_data.get("email") or user_data.get("sub") or "").strip()
+        if not email and token_data.get("id_token"):
+            try:
+                # With scope=openid only, userinfo may not include email; id_token sometimes does
+                id_payload = jwt.decode(
+                    token_data["id_token"],
+                    options={"verify_signature": False},
+                    algorithms=["RS256", "ES256"],
+                )
+                email = (id_payload.get("email") or id_payload.get("sub") or "").strip()
+            except Exception:
+                pass
+        if not email:
+            email = (user_data.get("sub") or "").strip()
     else:
         email = (user_data.get("email") or user_data.get("mail") or "").strip()
 
