@@ -365,7 +365,8 @@ class CareFlowState(TypedDict):
 
     # AI classification result
     classification: Optional[str]
-    doctor_specialty: Optional[str]  # e.g. pediatrician, general_physician, dermatologist (when route is medical/doctor_handoff)
+    doctor_specialty: Optional[str]  # used only for direct doctor_handoff dropdown; medical route uses doctor_suggestion_text
+    doctor_suggestion_text: Optional[str]  # LLM-generated short sentence suggesting which type of doctor (when route is medical)
 
     # Output
     response_message: Optional[str]
@@ -517,20 +518,19 @@ def classify_with_ai(state: CareFlowState) -> CareFlowState:
 
     classification_prompt = SystemMessage(content="""You are CareFlow's input classifier.
 Classify the user message into exactly ONE category.
-Then, if the category is MEDICAL, add a second line with the type of doctor most appropriate.
+Then, if the category is MEDICAL, add a second line: one short sentence suggesting which type of doctor or specialist might help. Do not use a fixed list of keywords. Write naturally and flexibly based on the user's symptoms or concern.
 
 Categories (first line only):
 - EMERGENCY: Life-threatening symptoms (stroke signs, chest pain, severe bleeding, difficulty breathing, loss of consciousness, suicidal intent)
 - MEDICAL: Any health concern — physical OR mental (headache, fever, anxiety, depression, stress, panic attacks, insomnia, mood issues, injury, etc.)
 - UNCLEAR: Cannot determine or not health-related
 
-Doctor type (second line ONLY when first line is MEDICAL):
-Use one or two words for the specialization. Examples: general_physician, pediatrician, dermatologist, cardiologist, gynecologist, orthopedic, psychiatrist, neurologist, dentist, ophthalmologist, ent, gastroenterologist, pulmonologist, nephrologist, urologist, rheumatologist, endocrinologist, clinic.
-Use underscores for multi-word (e.g. general_physician). For unspecified or generic use: general_physician or clinic.
+Doctor suggestion (second line ONLY when first line is MEDICAL):
+Write one short sentence (max 20 words) suggesting which kind of doctor or specialist could help. Be flexible: e.g. "Consider seeing a urologist or general physician for back or stomach pain." or "A dermatologist would be appropriate for skin issues." or "You might want to see a psychiatrist or counselor for anxiety." Do not restrict yourself to predefined labels — suggest what fits the user's message.
 
 Format:
 Line 1: EMERGENCY or MEDICAL or UNCLEAR
-Line 2 (only if MEDICAL): the doctor specialization (e.g. pediatrician, neurologist, dentist)""")
+Line 2 (only if MEDICAL): your short suggestion sentence""")
 
     user_msg = HumanMessage(content=state["message"])
     response = llm.invoke([classification_prompt, user_msg])
@@ -538,10 +538,11 @@ Line 2 (only if MEDICAL): the doctor specialization (e.g. pediatrician, neurolog
     lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
     classification = (lines[0].upper() if lines else "MEDICAL")
     doctor_specialty = None
+    doctor_suggestion_text = None
     if len(lines) >= 2 and classification == "MEDICAL":
-        spec = lines[1].strip().lower().replace(" ", "_")
-        if spec:
-            doctor_specialty = spec
+        suggestion = lines[1].strip()
+        if suggestion and len(suggestion) < 300:
+            doctor_suggestion_text = suggestion
 
     route_map = {
         "EMERGENCY": "emergency",
@@ -555,6 +556,7 @@ Line 2 (only if MEDICAL): the doctor specialization (e.g. pediatrician, neurolog
         "route": route,
         "classification": classification,
         "doctor_specialty": doctor_specialty,
+        "doctor_suggestion_text": doctor_suggestion_text,
         "response_message": f"Classified as: {classification}",
     }
 
@@ -665,6 +667,7 @@ async def route_input(
         "block_reason": None,
         "classification": None,
         "doctor_specialty": None,
+        "doctor_suggestion_text": None,
         "response_message": None,
     }
 

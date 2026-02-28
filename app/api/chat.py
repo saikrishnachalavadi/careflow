@@ -104,6 +104,7 @@ def _user_message(
     severity_psychological: str,
     block_reason: Optional[str],
     doctor_specialty: Optional[str] = None,
+    doctor_suggestion_text: Optional[str] = None,
 ) -> Tuple[str, Optional[str]]:
     """Return (message_for_user, action). No severity or internal labels."""
     if route == "greeting":
@@ -134,6 +135,11 @@ def _user_message(
             return (
                 "Based on what you've shared, I recommend speaking with a mental health professional. I can help you find a psychologist, psychiatrist, or counselor nearby, or show you crisis helpline numbers.",
                 "psychological",
+            )
+        if doctor_suggestion_text:
+            return (
+                f"{doctor_suggestion_text} I can help you find one nearby if you share your location.",
+                "doctors",
             )
         doc_label = _doctor_specialty_label(doctor_specialty)
         return (
@@ -201,6 +207,7 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
     severity_medical = "M1"
     severity_psychological = "P0"
     doctor_specialty = result.get("doctor_specialty")
+    doctor_suggestion_text = result.get("doctor_suggestion_text")
 
     if route == "medical":
         severity_medical, severity_psychological = calculate_severity([request.message])
@@ -209,10 +216,15 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
         elif severity_medical in ("M1", "M2"):
             recommended_action = "doctor_handoff"
 
-    msg, action = _user_message(route, severity_medical, severity_psychological, block_reason, doctor_specialty)
+    msg, action = _user_message(
+        route, severity_medical, severity_psychological, block_reason,
+        doctor_specialty=doctor_specialty,
+        doctor_suggestion_text=doctor_suggestion_text,
+    )
     return ChatResponse(
         message=msg,
         action=action,
         doctor_specialty=doctor_specialty if action == "doctors" else None,
+        doctor_suggestion_text=doctor_suggestion_text if action == "doctors" else None,
         session_id=session.id,
     )
