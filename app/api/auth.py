@@ -4,6 +4,7 @@ Uses JWT in httpOnly cookie. First-time OAuth users are created as new users.
 """
 import logging
 import secrets
+import time
 import uuid
 from typing import Optional
 from urllib.parse import urlencode
@@ -248,8 +249,8 @@ async def callback(
 
 @router.get("/logout")
 async def logout():
-    """Clear auth cookie and redirect to /ui. Full page navigation so browser reliably drops the cookie."""
-    redir = RedirectResponse(url="/ui", status_code=302)
+    """Clear auth cookie and redirect to /ui. Cache-busting query so browser loads fresh page and /auth/me runs without stale cookie."""
+    redir = RedirectResponse(url=f"/ui?logged_out={int(time.time())}", status_code=302)
     clear_auth_cookie(redir)
     redir.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
     redir.headers["Pragma"] = "no-cache"

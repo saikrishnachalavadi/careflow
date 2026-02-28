@@ -301,11 +301,16 @@
       else el.textContent = n + ' message' + (n !== 1 ? 's' : '') + ' left';
     }
 
-    function setAuthUI(loggedIn, email) {
+    function setAuthUI(loggedIn, email, provider) {
       document.getElementById('authLoggedOut').style.display = loggedIn ? 'none' : 'block';
       document.getElementById('authLoggedIn').style.display = loggedIn ? 'block' : 'none';
       var emailEl = document.getElementById('userEmail');
-      emailEl.textContent = loggedIn && email ? email : '';
+      if (!loggedIn || !email) {
+        emailEl.textContent = '';
+        return;
+      }
+      var p = (provider && provider.charAt(0).toUpperCase() + provider.slice(1)) || '';
+      emailEl.textContent = p ? 'Signed in with ' + p + ' — ' + email : email;
     }
 
     async function loadAuth() {
@@ -314,7 +319,7 @@
         if (res.ok) {
           var data = await res.json();
           userId = data.user_id;
-          setAuthUI(true, data.email || '');
+          setAuthUI(true, data.email || '', data.provider || '');
           updatePromptsLeft(data.is_tester ? 99 : null);
           return;
         }
@@ -1487,6 +1492,8 @@
         var params = new URLSearchParams(window.location.search);
         if (params.get('auth_error')) {
           addMsg('Login was cancelled or failed. You can try again or continue as guest.', false);
+        }
+        if (params.get('auth_error') || params.get('logged_out')) {
           window.history.replaceState({}, '', window.location.pathname);
         }
         input.focus();
