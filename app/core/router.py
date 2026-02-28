@@ -540,7 +540,7 @@ Line 2 (only if MEDICAL): the doctor specialization (e.g. pediatrician, neurolog
     route_map = {
         "EMERGENCY": "emergency",
         "MEDICAL": "medical",
-        "UNCLEAR": "medical",
+        "UNCLEAR": "unclear",
     }
     route = route_map.get(classification, "medical")
 

@@ -20,8 +20,33 @@ from app.api.triage import _get_or_create_session
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+# Fixed fallback when LLM is unavailable for unclear messages
+_UNCLEAR_FALLBACK = "I can only help with health-related questions—symptoms, finding a doctor, pharmacy, lab, or emergencies. What do you need?"
 
-def _route_to_action(route: str) -> str:
+
+async def _generate_unclear_reply(user_message: str) -> str:
+    """Use Gemini (free tier) to generate a short, polite redirect for off-topic or unclear input."""
+    if not settings.google_api_key:
+        return _UNCLEAR_FALLBACK
+    try:
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        from langchain_core.messages import SystemMessage, HumanMessage
+        llm = ChatGoogleGenerativeAI(
+            model="gemini-2.5-flash",
+            google_api_key=settings.google_api_key,
+        )
+        prompt = SystemMessage(content="""You are CareFlow, a healthcare-only assistant. The user said something that is not clearly about health.
+Reply in ONE short sentence (max 15 words). Politely say you only help with health topics and ask them to share a symptom or what they need (e.g. doctor, pharmacy, lab). Do NOT recommend a doctor. Be friendly and brief.""")
+        resp = llm.invoke([prompt, HumanMessage(content=user_message)])
+        text = (resp.content or "").strip()
+        if text and len(text) < 200:
+            return text
+    except Exception as e:
+        logger.debug("Unclear-reply LLM failed: %s", e)
+    return _UNCLEAR_FALLBACK
+
+
+def _route_to_action(route: str) -> Optional[str]:
     if route == "emergency":
         return "emergency"
     if route == "doctor_handoff":
@@ -32,6 +57,8 @@ def _route_to_action(route: str) -> str:
         return "lab_handoff"
     if route == "blocked":
         return "blocked"
+    if route == "unclear":
+        return None
     return "medical"
 
 
@@ -92,6 +119,9 @@ def _user_message(
         return ("I can help you find a pharmacy or with over-the-counter options. Share your location for nearby pharmacies.", "pharmacy")
     if route == "lab_handoff":
         return ("I can help you with lab tests. Share your location to find nearby labs.", "labs")
+    if route == "unclear":
+        # Message is set by caller using _generate_unclear_reply()
+        return (_UNCLEAR_FALLBACK, None)
     if route == "medical":
         if severity_medical == "M3":
             return ("Opening nearby emergency services.", "emergency_services")
@@ -155,6 +185,13 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
             db.commit()
         msg, action = _user_message(route, "M0", "P0", block_reason, None)
         return ChatResponse(message=msg, action=action, doctor_specialty=None, session_id=session.id)
+
+    if route == "unclear":
+        session.last_activity = datetime.utcnow()
+        session.message_count = (session.message_count or 0) + 1
+        db.commit()
+        msg = await _generate_unclear_reply(request.message)
+        return ChatResponse(message=msg, action=None, doctor_specialty=None, session_id=session.id)
 
     session.last_activity = datetime.utcnow()
     session.message_count = (session.message_count or 0) + 1

@@ -71,6 +71,8 @@ def _route_to_action(route: str) -> str:
         return "lab_handoff"
     if route == "blocked":
         return "blocked"
+    if route == "unclear":
+        return "unclear"
     return "medical"  # medical flow → severity decides doctor vs OTC later
 
 
@@ -141,6 +143,18 @@ async def create_triage(request: TriageRequest, db: Session = Depends(get_db)):
             severity_psychological="P0",
             recommended_action="blocked",
             message=block_reason or result.get("response_message", "Request blocked."),
+        )
+
+    if route == "unclear":
+        session.last_activity = datetime.utcnow()
+        session.message_count = (session.message_count or 0) + 1
+        db.commit()
+        return TriageResponse(
+            session_id=session.id,
+            severity_medical="M0",
+            severity_psychological="P0",
+            recommended_action="unclear",
+            message="I can only help with health-related questions. Tell me about a symptom or what you need (e.g. doctor, pharmacy, lab).",
         )
 
     # Update session activity

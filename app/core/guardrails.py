@@ -2,7 +2,8 @@ from typing import Tuple
 
 NON_MEDICAL_PATTERNS = [
     "weather", "sports", "politics", "recipe", "movie",
-    "game", "joke", "story", "homework"
+    "game", "joke", "story", "homework", "code", "programming",
+    "coding", "software", "script", "algorithm",
 ]
 
 
