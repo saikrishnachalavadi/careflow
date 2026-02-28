@@ -37,17 +37,41 @@
       flex-wrap: wrap;
     }
     .auth-bar .prompts-left { font-size: 0.8rem; opacity: 0.95; }
-    .auth-bar .auth-link {
+    .auth-bar .auth-btn {
       padding: 0.35rem 0.6rem;
       background: rgba(255,255,255,0.2);
       color: #fff;
       border: 1px solid rgba(255,255,255,0.5);
       border-radius: 0.4rem;
       font-size: 0.8rem;
-      text-decoration: none;
+      cursor: pointer;
     }
-    .auth-bar .auth-link:hover { background: rgba(255,255,255,0.3); color: #fff; }
-    .auth-bar .user-email { font-size: 0.85rem; opacity: 0.95; }
+    .auth-bar .auth-btn:hover { background: rgba(255,255,255,0.3); color: #fff; }
+    .auth-bar .auth-link { color: #fff; text-decoration: none; font-size: 0.8rem; }
+    .auth-bar .auth-link:hover { text-decoration: underline; }
+    .auth-bar .user-name { font-size: 0.9rem; opacity: 0.95; font-weight: 500; }
+    .auth-popup-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000;
+      display: none; align-items: center; justify-content: center; padding: 1rem;
+    }
+    .auth-popup-overlay.show { display: flex; }
+    .auth-popup {
+      background: #fff; border-radius: 0.75rem; padding: 1.5rem; max-width: 22rem; width: 100%;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+    }
+    .auth-popup h3 { margin: 0 0 1rem; font-size: 1.2rem; }
+    .auth-popup label { display: block; margin: 0.75rem 0 0.25rem; font-size: 0.9rem; color: #374151; }
+    .auth-popup input { width: 100%; padding: 0.5rem 0.6rem; border: 1px solid #d1d5db; border-radius: 0.4rem; font-size: 0.95rem; box-sizing: border-box; }
+    .auth-popup .auth-popup-err { color: #dc2626; font-size: 0.85rem; margin-top: 0.5rem; }
+    .auth-popup .auth-popup-msg { color: #059669; font-size: 0.85rem; margin-top: 0.5rem; }
+    .auth-popup .btn-row { margin-top: 1.25rem; display: flex; gap: 0.5rem; justify-content: flex-end; }
+    .auth-popup .btn-row button { padding: 0.5rem 1rem; border-radius: 0.4rem; font-size: 0.9rem; cursor: pointer; border: none; }
+    .auth-popup .btn-primary { background: #16213e; color: #fff; }
+    .auth-popup .btn-primary:hover { background: #1e3a5f; }
+    .auth-popup .btn-secondary { background: #e5e7eb; color: #374151; }
+    .auth-popup .btn-secondary:hover { background: #d1d5db; }
+    .auth-popup .close-x { float: right; background: none; border: none; font-size: 1.25rem; cursor: pointer; color: #6b7280; line-height: 1; padding: 0; }
+    .auth-popup .close-x:hover { color: #111; }
     .chat {
       flex: 1;
       overflow-y: auto;
@@ -245,12 +269,11 @@
       <div class="auth-bar">
         <span class="prompts-left" id="promptsLeft"></span>
         <div id="authLoggedOut">
-          <a href="/auth/login/google" class="auth-link">Sign in with Google</a>
-          <a href="/auth/login/github" class="auth-link">Sign in with GitHub</a>
-          <a href="/auth/login/yahoo" class="auth-link">Sign in with Yahoo</a>
+          <button type="button" class="auth-btn" id="btnSignUp">Sign up</button>
+          <button type="button" class="auth-btn" id="btnSignIn">Sign in</button>
         </div>
         <div id="authLoggedIn" style="display:none;">
-          <span class="user-email" id="userEmail"></span>
+          <span class="user-name" id="userName"></span>
           <a href="/auth/logout" class="auth-link">Sign out</a>
         </div>
       </div>
@@ -271,6 +294,48 @@
   <p class="links">
     <a href="/docs" target="_blank">API docs</a> · <a href="/" target="_blank">API root</a>
   </p>
+
+  <!-- Sign up popup -->
+  <div class="auth-popup-overlay" id="signupPopup">
+    <div class="auth-popup">
+      <button type="button" class="close-x" id="signupPopupClose" aria-label="Close">&times;</button>
+      <h3>Sign up</h3>
+      <p style="margin:0 0 0.5rem;font-size:0.9rem;color:#6b7280;">We'll send a verification link to your email.</p>
+      <form id="signupForm">
+        <label for="signupUsername">Username</label>
+        <input type="text" id="signupUsername" name="username" required minlength="2" placeholder="e.g. jane" autocomplete="username" />
+        <label for="signupEmail">Email</label>
+        <input type="email" id="signupEmail" name="email" required placeholder="you@example.com" autocomplete="email" />
+        <label for="signupPassword">Password</label>
+        <input type="password" id="signupPassword" name="password" required minlength="6" placeholder="At least 6 characters" autocomplete="new-password" />
+        <div id="signupErr" class="auth-popup-err"></div>
+        <div id="signupMsg" class="auth-popup-msg"></div>
+        <div class="btn-row">
+          <button type="button" class="btn-secondary" id="signupCancel">Cancel</button>
+          <button type="submit" class="btn-primary">Sign up</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Sign in popup -->
+  <div class="auth-popup-overlay" id="signinPopup">
+    <div class="auth-popup">
+      <button type="button" class="close-x" id="signinPopupClose" aria-label="Close">&times;</button>
+      <h3>Sign in</h3>
+      <form id="signinForm">
+        <label for="signinUsername">Username</label>
+        <input type="text" id="signinUsername" name="username" required autocomplete="username" />
+        <label for="signinPassword">Password</label>
+        <input type="password" id="signinPassword" name="password" required autocomplete="current-password" />
+        <div id="signinErr" class="auth-popup-err"></div>
+        <div class="btn-row">
+          <button type="button" class="btn-secondary" id="signinCancel">Cancel</button>
+          <button type="submit" class="btn-primary">Sign in</button>
+        </div>
+      </form>
+    </div>
+  </div>
 
   <script>
     const chat = document.getElementById('chat');
@@ -301,16 +366,11 @@
       else el.textContent = n + ' message' + (n !== 1 ? 's' : '') + ' left';
     }
 
-    function setAuthUI(loggedIn, email, provider) {
+    function setAuthUI(loggedIn, username) {
       document.getElementById('authLoggedOut').style.display = loggedIn ? 'none' : 'block';
       document.getElementById('authLoggedIn').style.display = loggedIn ? 'block' : 'none';
-      var emailEl = document.getElementById('userEmail');
-      if (!loggedIn || !email) {
-        emailEl.textContent = '';
-        return;
-      }
-      var p = (provider && provider.charAt(0).toUpperCase() + provider.slice(1)) || '';
-      emailEl.textContent = p ? 'Signed in with ' + p + ' — ' + email : email;
+      var nameEl = document.getElementById('userName');
+      nameEl.textContent = loggedIn && username ? username : '';
     }
 
     async function loadAuth() {
@@ -319,7 +379,7 @@
         if (res.ok) {
           var data = await res.json();
           userId = data.user_id;
-          setAuthUI(true, data.email || '', data.provider || '');
+          setAuthUI(true, data.username || data.email || '');
           updatePromptsLeft(data.is_tester ? 99 : null);
           return;
         }
@@ -329,6 +389,79 @@
       setAuthUI(false);
       updatePromptsLeft(6);
     }
+
+    (function authPopups() {
+      var signupPopup = document.getElementById('signupPopup');
+      var signinPopup = document.getElementById('signinPopup');
+      function openSignup() { signupPopup.classList.add('show'); document.getElementById('signupErr').textContent = ''; document.getElementById('signupMsg').textContent = ''; }
+      function openSignin() { signinPopup.classList.add('show'); document.getElementById('signinErr').textContent = ''; }
+      function closeSignup() { signupPopup.classList.remove('show'); }
+      function closeSignin() { signinPopup.classList.remove('show'); }
+      document.getElementById('btnSignUp').onclick = openSignup;
+      document.getElementById('btnSignIn').onclick = openSignin;
+      document.getElementById('signupPopupClose').onclick = closeSignup;
+      document.getElementById('signupCancel').onclick = closeSignup;
+      document.getElementById('signinPopupClose').onclick = closeSignin;
+      document.getElementById('signinCancel').onclick = closeSignin;
+      signupPopup.onclick = function(e) { if (e.target === signupPopup) closeSignup(); };
+      signinPopup.onclick = function(e) { if (e.target === signinPopup) closeSignin(); };
+
+      document.getElementById('signupForm').onsubmit = async function(e) {
+        e.preventDefault();
+        var errEl = document.getElementById('signupErr');
+        var msgEl = document.getElementById('signupMsg');
+        errEl.textContent = '';
+        msgEl.textContent = '';
+        var username = document.getElementById('signupUsername').value.trim();
+        var email = document.getElementById('signupEmail').value.trim();
+        var password = document.getElementById('signupPassword').value;
+        try {
+          var res = await fetch('/auth/signup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ username: username, email: email, password: password })
+          });
+          var data = await res.json().catch(function() { return {}; });
+          if (res.ok) {
+            msgEl.textContent = data.message || 'Verification email sent. Check your inbox.';
+            document.getElementById('signupForm').reset();
+            setTimeout(closeSignup, 2000);
+          } else {
+            var detail = data.detail;
+            errEl.textContent = typeof detail === 'string' ? detail : (Array.isArray(detail) && detail[0] && detail[0].msg) ? detail[0].msg : (detail && detail.msg) ? detail.msg : 'Sign up failed';
+          }
+        } catch (err) {
+          errEl.textContent = 'Request failed. Try again.';
+        }
+      };
+
+      document.getElementById('signinForm').onsubmit = async function(e) {
+        e.preventDefault();
+        var errEl = document.getElementById('signinErr');
+        errEl.textContent = '';
+        var username = document.getElementById('signinUsername').value.trim();
+        var password = document.getElementById('signinPassword').value;
+        try {
+          var res = await fetch('/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ username: username, password: password })
+          });
+          var data = await res.json().catch(function() { return {}; });
+          if (res.ok) {
+            closeSignin();
+            loadAuth();
+          } else {
+            var detail = data.detail;
+            errEl.textContent = typeof detail === 'string' ? detail : (Array.isArray(detail) && detail[0] && detail[0].msg) ? detail[0].msg : (detail && detail.msg) ? detail.msg : 'Sign in failed';
+          }
+        } catch (err) {
+          errEl.textContent = 'Request failed. Try again.';
+        }
+      };
+    })();
 
     function escapeHtml(s) {
       const div = document.createElement('div');
@@ -1490,10 +1623,14 @@
       userId = getOrCreateAnonId();
       loadAuth().then(function() {
         var params = new URLSearchParams(window.location.search);
-        if (params.get('auth_error')) {
-          addMsg('Login was cancelled or failed. You can try again or continue as guest.', false);
+        if (params.get('verified') === '1') {
+          addMsg('Your email is verified. You can sign in now.', false);
         }
-        if (params.get('auth_error') || params.get('logged_out')) {
+        if (params.get('auth_error')) {
+          var msg = params.get('auth_error') === 'invalid_or_expired' ? 'Verification link invalid or expired. Try signing up again.' : 'Something went wrong. You can try again or continue as guest.';
+          addMsg(msg, false);
+        }
+        if (params.get('auth_error') || params.get('logged_out') || params.get('verified')) {
           window.history.replaceState({}, '', window.location.pathname);
         }
         input.focus();

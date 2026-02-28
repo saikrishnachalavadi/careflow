@@ -39,6 +39,13 @@ class Settings(BaseSettings):
     # OAuth redirect: set in production (e.g. https://careflow-ypfn.onrender.com) so redirect_uri matches exactly what you registered in Google/GitHub/Yahoo consoles
     public_base_url: Optional[str] = None
 
+    # Email (for verification): set in .env to send verification emails; if not set, verification link is logged only
+    smtp_host: Optional[str] = None
+    smtp_port: int = 587
+    smtp_user: Optional[str] = None
+    smtp_password: Optional[str] = None
+    email_from: Optional[str] = None  # e.g. "CareFlow <noreply@yourdomain.com>"
+
     # OAuth (optional; set in .env to enable each provider)
     google_client_id: Optional[str] = None
     google_client_secret: Optional[str] = None

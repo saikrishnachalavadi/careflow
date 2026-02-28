@@ -1,6 +1,7 @@
 """
 JWT and cookie helpers for CareFlow auth.
 Cookie is httpOnly; frontend gets identity via GET /auth/me.
+Supports both OAuth (email, provider) and username/password (email, provider="password").
 """
 import logging
 import time
@@ -10,10 +11,12 @@ from typing import Optional, Tuple
 import jwt
 from fastapi import Request, Response
 from fastapi.responses import RedirectResponse
+from passlib.context import CryptContext
 
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # Anonymous id prefix so backend can tell anon from logged-in
 ANON_PREFIX = "anon_"
@@ -110,6 +113,19 @@ def get_current_user_from_request(request: Request) -> Tuple[Optional[str], Opti
 
 def generate_anonymous_id() -> str:
     return ANON_PREFIX + str(uuid.uuid4()).replace("-", "")[:24]
+
+
+def hash_password(password: str) -> str:
+    return pwd_ctx.hash(password)
+
+
+def verify_password(plain: str, hashed: str) -> bool:
+    if not hashed:
+        return False
+    try:
+        return pwd_ctx.verify(plain, hashed)
+    except Exception:
+        return False
 
 
 def get_message_limit_for_user(user_id: Optional[str], user_obj: Optional[object]) -> int:

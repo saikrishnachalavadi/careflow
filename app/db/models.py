@@ -9,9 +9,14 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(String, primary_key=True)
-    email = Column(String, unique=True, nullable=True, index=True)  # OAuth users
-    phone = Column(String, unique=True, nullable=True)  # optional for OAuth-only users
-    auth_provider = Column(String, nullable=True)  # google | yahoo | github
+    username = Column(String, unique=True, nullable=True, index=True)  # for sign-in; unique per user
+    email = Column(String, unique=True, nullable=True, index=True)
+    password_hash = Column(String, nullable=True)  # for username/password auth
+    email_verified = Column(Integer, default=0)  # 0=False, 1=True
+    verification_token = Column(String, nullable=True, index=True)
+    verification_token_expires = Column(DateTime, nullable=True)
+    phone = Column(String, unique=True, nullable=True)
+    auth_provider = Column(String, nullable=True)  # google | yahoo | github | password
     created_at = Column(DateTime, default=datetime.utcnow)
     otc_attempts_used = Column(Integer, default=0)
     otc_privilege_status = Column(String, default="ACTIVE")  # ACTIVE | LOCKED

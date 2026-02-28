@@ -1,31 +1,132 @@
 """
-Auth API: OAuth login (Google, GitHub, Yahoo), callback, logout, /auth/me.
-Uses JWT in httpOnly cookie. First-time OAuth users are created as new users.
+Auth API: Sign up (email verification), Sign in (username/password), OAuth, logout, /auth/me.
+Uses JWT in httpOnly cookie.
 """
 import logging
 import secrets
 import time
 import uuid
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from urllib.parse import urlencode
 
 import httpx
+import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-import jwt
 from app.config import settings
 from app.core.auth_utils import (
     clear_auth_cookie,
     get_current_user_from_request,
+    hash_password,
     set_auth_cookie,
+    verify_password,
 )
+from app.core.email_sender import send_verification_email
 from app.db.database import get_db
 from app.db.models import User
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+class SignupRequest(BaseModel):
+    username: str
+    password: str
+    email: str
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+def _verification_base_url() -> str:
+    base = (settings.public_base_url or "").strip().rstrip("/")
+    if base:
+        return base
+    return "https://careflow-ypfn.onrender.com"
+
+
+# ----- Sign up (email verification) and Sign in (username/password) -----
+
+
+@router.post("/signup")
+async def signup(body: SignupRequest, db: Session = Depends(get_db)):
+    """Create user with email unverified; send verification email."""
+    username = (body.username or "").strip()
+    email = (body.email or "").strip().lower()
+    password = body.password or ""
+    if not username or len(username) < 2:
+        raise HTTPException(status_code=400, detail="Username must be at least 2 characters")
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="Valid email required")
+    if len(password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    if db.query(User).filter(User.username == username).first():
+        raise HTTPException(status_code=400, detail="Username already taken")
+    if db.query(User).filter(User.email == email).first():
+        raise HTTPException(status_code=400, detail="Email already registered")
+    token = secrets.token_urlsafe(32)
+    expires = datetime.now(timezone.utc) + timedelta(hours=24)
+    user = User(
+        id=str(uuid.uuid4()),
+        username=username,
+        email=email,
+        password_hash=hash_password(password),
+        email_verified=0,
+        verification_token=token,
+        verification_token_expires=expires,
+        auth_provider="password",
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    verification_url = f"{_verification_base_url()}/auth/verify?token={token}"
+    send_verification_email(email, username, verification_url)
+    return {"message": "Verification email sent. Check your inbox to activate your account."}
+
+
+@router.get("/verify")
+async def verify(token: Optional[str] = None, db: Session = Depends(get_db)):
+    """Verify email via link; redirect to /ui."""
+    if not token:
+        return RedirectResponse(url="/ui?auth_error=no_token", status_code=302)
+    user = db.query(User).filter(
+        User.verification_token == token,
+        User.verification_token_expires > datetime.now(timezone.utc),
+    ).first()
+    if not user:
+        return RedirectResponse(url="/ui?auth_error=invalid_or_expired", status_code=302)
+    user.email_verified = 1
+    user.verification_token = None
+    user.verification_token_expires = None
+    db.commit()
+    return RedirectResponse(url="/ui?verified=1", status_code=302)
+
+
+@router.post("/login")
+async def login_post(body: LoginRequest, response: Response, db: Session = Depends(get_db)):
+    """Sign in with username and password."""
+    username = (body.username or "").strip()
+    password = body.password or ""
+    if not username or not password:
+        raise HTTPException(status_code=400, detail="Username and password required")
+    user = db.query(User).filter(User.username == username).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+    if not getattr(user, "email_verified", 1):
+        raise HTTPException(status_code=403, detail="Please verify your email first. Check your inbox for the verification link.")
+    if not getattr(user, "password_hash", None):
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+    if not verify_password(password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+    set_auth_cookie(response, user.id, user.email or "", "password")
+    return {"user_id": user.id, "username": user.username}
+
 
 # OAuth provider configs: auth_url, token_url, userinfo (or way to get email), scope
 OAUTH_CONFIG = {
@@ -272,9 +373,10 @@ async def me(request: Request, response: Response, db: Session = Depends(get_db)
         raise HTTPException(status_code=401, detail="User not found")
 
     from app.core.auth_utils import is_tester_email
-    tester = is_tester_email(user.email)
+    tester = is_tester_email(user.email) if user.email else False
     return {
         "user_id": user.id,
+        "username": user.username,
         "email": user.email,
         "provider": user.auth_provider or "",
         "is_tester": tester,

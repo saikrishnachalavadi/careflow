@@ -21,8 +21,11 @@ def init_db():
     if settings.database_url.startswith("sqlite"):
         with engine.connect() as conn:
             for stmt in [
-                "ALTER TABLE users ADD COLUMN email VARCHAR",
-                "ALTER TABLE users ADD COLUMN auth_provider VARCHAR",
+                "ALTER TABLE users ADD COLUMN username VARCHAR",
+                "ALTER TABLE users ADD COLUMN password_hash VARCHAR",
+                "ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 0",
+                "ALTER TABLE users ADD COLUMN verification_token VARCHAR",
+                "ALTER TABLE users ADD COLUMN verification_token_expires DATETIME",
             ]:
                 try:
                     conn.execute(text(stmt))
