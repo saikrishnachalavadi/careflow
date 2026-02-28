@@ -356,7 +356,8 @@
     function setAuthUI(loggedIn, email) {
       document.getElementById('authLoggedOut').style.display = loggedIn ? 'none' : 'block';
       document.getElementById('authLoggedIn').style.display = loggedIn ? 'block' : 'none';
-      if (email) document.getElementById('userEmail').textContent = email;
+      var emailEl = document.getElementById('userEmail');
+      emailEl.textContent = loggedIn && email ? email : '';
     }
 
     async function loadAuth() {
