@@ -94,7 +94,15 @@ async def signup(body: SignupRequest, db: Session = Depends(get_db)):
     try:
         token = secrets.token_urlsafe(32)
         expires = datetime.now(timezone.utc) + timedelta(hours=24)
-        password_hash = hash_password(password)
+        try:
+            password_hash = hash_password(password)
+        except ValueError as e:
+            if "72 bytes" in str(e):
+                # Fallback if deployed code lacks truncation (e.g. build cache)
+                raw = (body.password or "").encode("utf-8")[:72].decode("utf-8", errors="ignore")
+                password_hash = hash_password(raw)
+            else:
+                raise
         user = User(
             id=str(uuid.uuid4()),
             username=username,
