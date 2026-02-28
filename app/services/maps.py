@@ -15,6 +15,8 @@ logger = logging.getLogger(__name__)
 
 PLACES_BASE = "https://maps.googleapis.com/maps/api/place"
 GEOCODE_URL = "https://maps.googleapis.com/maps/api/geocode/json"
+DISTANCE_MATRIX_URL = "https://maps.googleapis.com/maps/api/distancematrix/json"
+DISTANCE_MATRIX_BATCH_SIZE = 25  # API limit per request
 
 
 def geocode(query: str, region: str = "in") -> Optional[tuple]:
@@ -102,7 +104,7 @@ def _sort_by_distance(places: List[dict]) -> List[dict]:
 
 
 def _add_distance(place: dict, origin_lat: float, origin_lon: float) -> None:
-    """Add distance_km to place in-place from origin (search center)."""
+    """Add distance_km to place in-place (haversine fallback when Matrix API not used)."""
     geo = place.get("geometry") or {}
     loc = geo.get("location") or {}
     lat = loc.get("lat")
@@ -111,6 +113,91 @@ def _add_distance(place: dict, origin_lat: float, origin_lon: float) -> None:
         place["distance_km"] = _haversine_km(origin_lat, origin_lon, float(lat), float(lng))
     else:
         place["distance_km"] = None
+
+
+def _fetch_distance_matrix_batch(
+    origin_lat: float,
+    origin_lon: float,
+    dest_lat_lng: List[tuple],
+) -> List[Optional[dict]]:
+    """
+    Call Google Distance Matrix API for one origin and multiple destinations.
+    Returns list of {distance_km, distance_text} or None for each destination.
+    """
+    if not settings.google_maps_api_key or not dest_lat_lng:
+        return [None] * len(dest_lat_lng)
+    origins = f"{origin_lat},{origin_lon}"
+    destinations = "|".join(f"{lat},{lng}" for lat, lng in dest_lat_lng)
+    params = {
+        "origins": origins,
+        "destinations": destinations,
+        "units": "metric",
+        "key": settings.google_maps_api_key,
+    }
+    try:
+        with httpx.Client(timeout=10.0) as client:
+            r = client.get(DISTANCE_MATRIX_URL, params=params)
+            r.raise_for_status()
+            data = r.json()
+    except Exception as e:
+        logger.warning("Distance Matrix API failed: %s", e)
+        return [None] * len(dest_lat_lng)
+    if data.get("status") != "OK":
+        return [None] * len(dest_lat_lng)
+    rows = data.get("rows") or []
+    if not rows:
+        return [None] * len(dest_lat_lng)
+    elements = rows[0].get("elements") or []
+    out = []
+    for i, el in enumerate(elements):
+        if el.get("status") != "OK":
+            out.append(None)
+            continue
+        dist = el.get("distance") or {}
+        val_m = dist.get("value")
+        text = dist.get("text", "")
+        if val_m is not None:
+            out.append({"distance_km": round(float(val_m) / 1000, 1), "distance_text": text or None})
+        else:
+            out.append(None)
+    return out
+
+
+def _add_distances_via_matrix(
+    places: List[dict], origin_lat: float, origin_lon: float
+) -> None:
+    """
+    Set distance_km (and optionally distance_text) on each place using Google Distance Matrix API
+    (road/travel distance). Batches requests. Places without geometry keep distance_km None.
+    """
+    by_index: List[int] = []
+    dest_lat_lng: List[tuple] = []
+    for i, p in enumerate(places):
+        geo = p.get("geometry") or {}
+        loc = geo.get("location") or {}
+        lat, lng = loc.get("lat"), loc.get("lng")
+        if lat is not None and lng is not None:
+            by_index.append(i)
+            dest_lat_lng.append((float(lat), float(lng)))
+        else:
+            p["distance_km"] = None
+    if not dest_lat_lng:
+        return
+    for start in range(0, len(dest_lat_lng), DISTANCE_MATRIX_BATCH_SIZE):
+        end = min(start + DISTANCE_MATRIX_BATCH_SIZE, len(dest_lat_lng))
+        batch = dest_lat_lng[start:end]
+        results = _fetch_distance_matrix_batch(origin_lat, origin_lon, batch)
+        for j, res in enumerate(results):
+            idx = by_index[start + j]
+            if res:
+                places[idx]["distance_km"] = res["distance_km"]
+                if res.get("distance_text"):
+                    places[idx]["distance_text"] = res["distance_text"]
+            else:
+                places[idx]["distance_km"] = _haversine_km(
+                    origin_lat, origin_lon,
+                    dest_lat_lng[start + j][0], dest_lat_lng[start + j][1],
+                )
 
 
 def _fetch_nearby(
@@ -278,11 +365,11 @@ def get_emergency_services(lat: float, lon: float) -> dict:
             else:
                 row["phone"] = None
                 row["opening_hours_text"] = None
-            if origin_lat is not None and origin_lon is not None:
-                _add_distance(row, origin_lat, origin_lon)
             if only_with_phone and not (row.get("phone") or "").strip():
                 continue
             out.append(row)
+        if origin_lat is not None and origin_lon is not None and out:
+            _add_distances_via_matrix(out, origin_lat, origin_lon)
         return out
 
     return {
@@ -428,11 +515,12 @@ def get_doctors_with_phones(
             row["phone"] = None
             row["opening_hours_text"] = None
             row["open_now"] = None
-        _add_distance(row, lat, lon)
         if (row.get("phone") or "").strip():
             with_phone.append(row)
         else:
             no_phone.append(row)
+    _add_distances_via_matrix(with_phone, lat, lon)
+    _add_distances_via_matrix(no_phone, lat, lon)
     with_phone = _sort_doctors_by_specialty_and_distance(with_phone, specialty)
     no_phone = _sort_doctors_by_specialty_and_distance(no_phone, specialty)
     pool: List[dict] = list(with_phone)
@@ -470,9 +558,9 @@ def get_pharmacies_with_phones(lat: float, lon: float) -> List[dict]:
         else:
             row["phone"] = None
             row["opening_hours_text"] = None
-        _add_distance(row, lat, lon)
         if (row.get("phone") or "").strip():
             out.append(row)
+    _add_distances_via_matrix(out, lat, lon)
     return _sort_by_distance(out)
 
 
@@ -502,9 +590,9 @@ def get_labs_with_phones(lat: float, lon: float) -> List[dict]:
         else:
             row["phone"] = None
             row["opening_hours_text"] = None
-        _add_distance(row, lat, lon)
         if (row.get("phone") or "").strip():
             out.append(row)
+    _add_distances_via_matrix(out, lat, lon)
     return _sort_by_distance(out)
 
 
@@ -548,7 +636,7 @@ def get_mental_health_with_phones(lat: float, lon: float, specialty: Optional[st
         else:
             row["phone"] = None
             row["opening_hours_text"] = None
-        _add_distance(row, lat, lon)
         if (row.get("phone") or "").strip():
             out.append(row)
+    _add_distances_via_matrix(out, lat, lon)
     return _sort_by_distance(out)
