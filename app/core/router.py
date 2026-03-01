@@ -428,6 +428,10 @@ DIRECT_INTENT_MAP = {
         "i need therapist", "i need a therapist", "need therapist",
         "find therapist", "find psychologist", "see a counselor",
         "mental health support", "i need counseling",
+        "i feel depressed", "feel depressed", "depressed", "depression",
+        "i feel anxious", "feel anxious", "anxiety", "i have anxiety",
+        "overwhelmed", "emotional support", "need to talk to someone",
+        "therapy", "i need therapy",
     ],
     "emergency": [
         "call ambulance", "need ambulance", "call 112",
