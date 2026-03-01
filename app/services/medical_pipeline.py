@@ -18,7 +18,7 @@ TIMEOUT = 12.0
 
 def run_medical_pipeline(symptoms: str) -> tuple[str, str]:
     """
-    Dr.GPT flow: PubMed RAG (5 abstracts, 1000 chars each) → severity-only call → RAG-reply call.
+    Dr.GPT flow: PubMed RAG (3 abstracts, 600 chars each) → severity-only call → RAG-reply call.
     Returns (message, severity_medical). On failure, returns fallback message and "M1".
     """
     symptoms = (symptoms or "").strip()[:2000]
@@ -26,7 +26,7 @@ def run_medical_pipeline(symptoms: str) -> tuple[str, str]:
         return _fallback("M1"), "M1"
     entities = _extract_entities(symptoms)
     query = _query(symptoms, entities)
-    abstracts = _pubmed(query, 5)
+    abstracts = _pubmed(query, 3)
     severity = _severity_only(symptoms)
     return _rag_reply(symptoms, abstracts, severity)
 
@@ -102,7 +102,7 @@ def _pubmed(query: str, n: int) -> list[dict]:
                 break
             for ab in a.iter("Abstract"):
                 for at in ab.iter("AbstractText"):
-                    abstract = (at.text or " ".join(at.itertext())).strip()[:1000]
+                    abstract = (at.text or " ".join(at.itertext())).strip()[:600]
                     break
             break
         out.append({"pmid": pmid, "title": title, "abstract": abstract})
@@ -129,17 +129,15 @@ def _severity_only(symptoms: str) -> str:
 
 
 def _rag_reply(symptoms: str, abstracts: list[dict], severity: str) -> tuple[str, str]:
-    """One call: use the Research section above; keep causes/urgency specific to symptoms and research; 50–60 words; Urgency = 1 word."""
+    """One call: use Research section; max 120 words; Urgency low/moderate/high (normalized to 1 word)."""
     if not settings.google_api_key:
         return _fallback(severity), severity
     ctx = "\n\n".join(
-        (f"[{a.get('title','')}] {a.get('abstract','')}".strip() for a in abstracts[:5] if a.get("abstract"))
+        (f"[{a.get('title','')}] {a.get('abstract','')}".strip() for a in abstracts[:3] if a.get("abstract"))
     ) or "(No abstracts retrieved.)"
-    sys = """You are a medical info assistant. Base your answer ONLY on the Research section above. Do not add generic medical knowledge; if the research does not support something, omit it. Keep possible causes and when to see a doctor specific to the user's symptoms and the research.
-
-Use this exact format. For Urgency use only one word: Low, Medium, or High.
-Example: Possible causes: [1–2 short phrases from research]. Urgency: Medium. When to see a doctor: [1 short sentence]. No disclaimer. Reply in 50–60 words."""
-    user = f"Symptoms: {symptoms}\n\nResearch section above:\n{ctx}\n\nYour reply (same format; Urgency = one word only):"
+    sys = """You are a medical info assistant for education only. Not a doctor; not professional advice.
+Use the Research section above to inform your answer. In max 120 words: 1) Possible causes (1-3). 2) Urgency: low, moderate, or high. 3) When to see a doctor."""
+    user = f"Symptoms: {symptoms}\n\nResearch section above:\n{ctx}\n\nYour reply (max 120 words, concise):"
     try:
         from langchain_google_genai import ChatGoogleGenerativeAI
         from langchain_core.messages import SystemMessage, HumanMessage
@@ -148,7 +146,7 @@ Example: Possible causes: [1–2 short phrases from research]. Urgency: Medium. 
         reply = (r.content or "").strip()
         reply = _drop_disclaimer(reply)
         reply = _normalize_urgency(reply, severity)
-        reply = _truncate_to_words(reply, 60)
+        reply = _truncate_to_words(reply, 120)
         if reply:
             return reply, severity
     except Exception as e:
@@ -165,9 +163,9 @@ def _normalize_urgency(text: str, severity: str) -> str:
     if m:
         rest = m.group(2).strip().rstrip(".").strip()
         first = rest.split()[0].lower() if rest.split() else ""
-        if first in ("low", "medium", "high"):
+        if first in ("low", "medium", "high", "moderate"):
             # Already one word (maybe with punctuation); normalize to single word
-            replacement = first.capitalize()
+            replacement = "Medium" if first == "moderate" else first.capitalize()
         else:
             replacement = urgency_word
         before, after = text[: m.start(2)], text[m.end(2) :]
