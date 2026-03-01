@@ -12,48 +12,29 @@ logger = logging.getLogger(__name__)
 
 def run_medical_pipeline(symptoms: str) -> tuple[str, str]:
     """
-    Flow: severity-only call (Gemini) → medical reply call (Gemini, symptoms only).
-    Returns (message, severity_medical). On failure, returns fallback message and "M1".
+    Flow: one Gemini call (severity + reply). Returns (message, severity_medical). On failure, fallback and "M1".
     """
     symptoms = (symptoms or "").strip()[:2000]
     if not symptoms:
         return _fallback("M1"), "M1"
-    severity = _severity_only(symptoms)
-    return _medical_reply(symptoms, severity)
+    return _severity_and_reply(symptoms)
 
 
-def _severity_only(symptoms: str) -> str:
-    """One small call: symptoms only → M0|M1|M2|M3."""
+def _severity_and_reply(symptoms: str) -> tuple[str, str]:
+    """One call: Gemini returns severity code (M0–M3) and full reply. Parse and normalize."""
     if not settings.google_api_key:
-        return "M1"
-    try:
-        from langchain_google_genai import ChatGoogleGenerativeAI
-        from langchain_core.messages import SystemMessage, HumanMessage
-        llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=settings.google_api_key)
-        sys = "You are a triage assistant. Reply with ONLY one code: M0, M1, M2, or M3. M0=no concern, M1=low/self-care, M2=moderate/see doctor, M3=emergency. No other text."
-        r = llm.invoke([SystemMessage(content=sys), HumanMessage(content=symptoms)])
-        raw = (r.content or "").strip().upper()
-        for code in ("M3", "M2", "M0", "M1"):
-            if code in raw:
-                return code
-    except Exception as e:
-        logger.debug("Severity call failed: %s", e)
-    return "M1"
-
-
-def _medical_reply(symptoms: str, severity: str) -> tuple[str, str]:
-    """One call: Gemini (symptoms only). Format: Possible causes, Urgency (1 word), When to see a doctor. Replace with Google Medical API when integrated."""
-    if not settings.google_api_key:
-        return _fallback(severity), severity
+        return _fallback("M1"), "M1"
     sys = """You are a medical info assistant for education only. Not a doctor; not professional advice.
-Based on the symptoms given, in max 120 words: 1) Possible causes (1-3). 2) Urgency: low, moderate, or high. 3) When to see a doctor."""
-    user = f"Symptoms: {symptoms}\n\nYour reply (max 120 words, concise):"
+Reply in this exact format. Line 1: one severity code only—M0, M1, M2, or M3 (M0=no concern, M1=low/self-care, M2=moderate/see doctor, M3=emergency). Line 2 and below: in max 120 words total, 1) Possible causes (1-3). 2) Urgency: low, moderate, or high. 3) When to see a doctor."""
+    user = f"Symptoms: {symptoms}\n\nYour reply (line 1 = code, then possible causes, urgency, when to see a doctor):"
     try:
         from langchain_google_genai import ChatGoogleGenerativeAI
         from langchain_core.messages import SystemMessage, HumanMessage
         llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=settings.google_api_key)
         r = llm.invoke([SystemMessage(content=sys), HumanMessage(content=user)])
-        reply = (r.content or "").strip()
+        raw = (r.content or "").strip()
+        severity = _parse_severity(raw)
+        reply = _strip_severity_line(raw)
         reply = _drop_disclaimer(reply)
         reply = _normalize_urgency(reply, severity)
         reply = _truncate_to_words(reply, 120)
@@ -61,7 +42,27 @@ Based on the symptoms given, in max 120 words: 1) Possible causes (1-3). 2) Urge
             return reply, severity
     except Exception as e:
         logger.warning("Medical reply failed: %s", e)
-    return _fallback(severity), severity
+    return _fallback("M1"), "M1"
+
+
+def _parse_severity(raw: str) -> str:
+    """Extract M0|M1|M2|M3 from first line or anywhere in text."""
+    upper = raw.upper()
+    for code in ("M3", "M2", "M0", "M1"):
+        if code in upper:
+            return code
+    return "M1"
+
+
+def _strip_severity_line(raw: str) -> str:
+    """Remove first line if it is only a severity code (M0, M1, M2, M3), return rest as reply."""
+    lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
+    if not lines:
+        return raw
+    first = re.sub(r"[^\w]", "", lines[0].upper())
+    if first in ("M0", "M1", "M2", "M3"):
+        return "\n".join(lines[1:]).strip() if len(lines) > 1 else ""
+    return raw
 
 
 def _normalize_urgency(text: str, severity: str) -> str:
