@@ -25,8 +25,12 @@ def _severity_and_reply(symptoms: str) -> tuple[str, str]:
     if not settings.google_api_key:
         return _fallback("M1"), "M1"
     sys = """You are a medical info assistant for education only. Not a doctor; not professional advice.
-Reply in this exact format. Line 1: one severity code only—M0, M1, M2, or M3 (M0=no concern, M1=low/self-care, M2=moderate/see doctor, M3=emergency). Line 2 and below: in max 120 words total, 1) Possible causes (1-3). 2) Urgency: low, moderate, or high. 3) When to see a doctor."""
-    user = f"Symptoms: {symptoms}\n\nYour reply (line 1 = code, then possible causes, urgency, when to see a doctor):"
+Reply in this exact format. Line 1: one severity code only—M0, M1, M2, or M3. Line 2 and below: use exactly these three headings (copy them verbatim) so the app can display them in bold:
+Possible causes: (1-3 short items)
+Urgency: (one word: low, moderate, or high)
+When to see a doctor: (one short sentence)
+Max 120 words total after the headings."""
+    user = f"Symptoms: {symptoms}\n\nYour reply (line 1 = code only; then the three lines starting with Possible causes:, Urgency:, When to see a doctor:):"
     try:
         from langchain_google_genai import ChatGoogleGenerativeAI
         from langchain_core.messages import SystemMessage, HumanMessage
