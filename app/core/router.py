@@ -423,6 +423,12 @@ DIRECT_INTENT_MAP = {
         "need blood test", "blood test done", "diagnostic lab", "pathology",
         "test", "tests", "scan", "scans", "diagnosis", "diagnostic",
     ],
+    "psychological_handoff": [
+        "therapist", "psychologist", "counselor", "mental health",
+        "i need therapist", "i need a therapist", "need therapist",
+        "find therapist", "find psychologist", "see a counselor",
+        "mental health support", "i need counseling",
+    ],
     "emergency": [
         "call ambulance", "need ambulance", "call 112",
         "emergency", "i need help now", "someone is dying",
@@ -559,7 +565,7 @@ def after_guardrails(state: CareFlowState) -> str:
 
 
 def after_intent(state: CareFlowState) -> str:
-    if state["route"] in ("doctor_handoff", "pharmacy_handoff", "lab_handoff", "emergency"):
+    if state["route"] in ("doctor_handoff", "pharmacy_handoff", "lab_handoff", "psychological_handoff", "emergency"):
         return "direct_handoff"
     return "check_emergency"
 

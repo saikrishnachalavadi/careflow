@@ -132,6 +132,11 @@ def _user_message(
         return ("I can help you find a pharmacy. Share your location for nearby pharmacies.", "pharmacy")
     if route == "lab_handoff":
         return ("I can help you with lab tests. Share your location to find nearby labs.", "labs")
+    if route == "psychological_handoff":
+        return (
+            "Based on what you've shared, I recommend speaking with a mental health professional. I can help you find a psychologist, psychiatrist, or counselor nearby, or show you crisis helpline numbers.",
+            "psychological",
+        )
     if route == "unclear":
         # Message is set by caller using _generate_unclear_reply()
         return (_UNCLEAR_FALLBACK, None)
