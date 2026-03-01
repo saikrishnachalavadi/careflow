@@ -21,9 +21,7 @@ from app.config import settings
 from app.core.auth_utils import (
     clear_auth_cookie,
     get_current_user_from_request,
-    hash_password,
     set_auth_cookie,
-    verify_password,
 )
 from app.core.email_sender import send_verification_email
 from app.db.database import get_db
@@ -52,16 +50,7 @@ def _verification_base_url() -> str:
 
 
 # ----- Sign up (email verification) and Sign in (username/password) -----
-
-
-def _password_for_bcrypt(raw: str) -> str:
-    """Bcrypt accepts max 72 bytes; truncate to avoid ValueError."""
-    if not raw:
-        return raw
-    b = raw.encode("utf-8")
-    if len(b) <= 72:
-        return raw
-    return b[:72].decode("utf-8", errors="ignore")
+# Password is stored plain (decoration only, not for commercial use).
 
 
 @router.post("/signup")
@@ -69,14 +58,13 @@ async def signup(body: SignupRequest, db: Session = Depends(get_db)):
     """Create user with email unverified; send verification email."""
     username = (body.username or "").strip()
     email = (body.email or "").strip().lower()
-    raw_password = body.password or ""
+    password = (body.password or "").strip()
     if not username or len(username) < 2:
         raise HTTPException(status_code=400, detail="Username must be at least 2 characters")
     if not email or "@" not in email:
         raise HTTPException(status_code=400, detail="Valid email required")
-    if not raw_password or len(raw_password) < 1 or len(raw_password) > 10:
-        raise HTTPException(status_code=400, detail="Password must be 1–10 characters")
-    password = _password_for_bcrypt(raw_password)
+    if not password or len(password) < 2:
+        raise HTTPException(status_code=400, detail="Password must be at least 2 characters")
     try:
         if db.query(User).filter(User.username == username).first():
             raise HTTPException(status_code=400, detail="Username already taken")
@@ -94,21 +82,11 @@ async def signup(body: SignupRequest, db: Session = Depends(get_db)):
     try:
         token = secrets.token_urlsafe(32)
         expires = datetime.now(timezone.utc) + timedelta(hours=24)
-        # Always pass ≤72 bytes to bcrypt (mandatory truncation right before hash)
-        safe_password = (password or "").encode("utf-8")[:72].decode("utf-8", errors="ignore")
-        try:
-            password_hash = hash_password(safe_password)
-        except Exception as e:
-            if "72 bytes" in str(e):
-                safe_password = (body.password or "").encode("utf-8")[:72].decode("utf-8", errors="ignore")
-                password_hash = hash_password(safe_password)
-            else:
-                raise
         user = User(
             id=str(uuid.uuid4()),
             username=username,
             email=email,
-            password_hash=password_hash,
+            password_hash=password,
             email_verified=0,
             verification_token=token,
             verification_token_expires=expires,
@@ -157,19 +135,17 @@ async def login_post(body: LoginRequest, response: Response, db: Session = Depen
     """Sign in with username and password."""
     username = (body.username or "").strip()
     password = (body.password or "").strip()
-    if not username or not password:
-        raise HTTPException(status_code=400, detail="Username and password required")
-    if len(password) > 10:
-        raise HTTPException(status_code=400, detail="Password must be 1–10 characters")
-        raise HTTPException(status_code=400, detail="Username and password required")
+    if not username or len(username) < 2:
+        raise HTTPException(status_code=400, detail="Username must be at least 2 characters")
+    if not password or len(password) < 2:
+        raise HTTPException(status_code=400, detail="Password must be at least 2 characters")
     user = db.query(User).filter(User.username == username).first()
     if not user:
         raise HTTPException(status_code=401, detail="Invalid username or password")
     if not getattr(user, "email_verified", 1):
         raise HTTPException(status_code=403, detail="Please verify your email first. Check your inbox for the verification link.")
-    if not getattr(user, "password_hash", None):
-        raise HTTPException(status_code=401, detail="Invalid username or password")
-    if not verify_password(password, user.password_hash):
+    stored = getattr(user, "password_hash", None) or ""
+    if password != stored:
         raise HTTPException(status_code=401, detail="Invalid username or password")
     set_auth_cookie(response, user.id, user.email or "", "password")
     return {"user_id": user.id, "username": user.username}
