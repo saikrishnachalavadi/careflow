@@ -129,14 +129,17 @@ def _severity_only(symptoms: str) -> str:
 
 
 def _rag_reply(symptoms: str, abstracts: list[dict], severity: str) -> tuple[str, str]:
-    """One call: use the Research section above; keep causes/urgency specific to symptoms and research; 60–80 words."""
+    """One call: use the Research section above; keep causes/urgency specific to symptoms and research; 50–60 words; Urgency = 1 word."""
     if not settings.google_api_key:
         return _fallback(severity), severity
     ctx = "\n\n".join(
         (f"[{a.get('title','')}] {a.get('abstract','')}".strip() for a in abstracts[:5] if a.get("abstract"))
     ) or "(No abstracts retrieved.)"
-    sys = """You are a medical info assistant. Use the Research section above. Keep possible causes, urgency, and when to see a doctor specific to the user's symptoms and to the research—do not give generic filler. Reply in 60–80 words. Use format: Possible causes: ... Urgency: ... When to see a doctor: ... No disclaimer."""
-    user = f"Symptoms: {symptoms}\n\nResearch section above:\n{ctx}\n\nYour reply (60–80 words, grounded in the research):"
+    sys = """You are a medical info assistant. Base your answer ONLY on the Research section above. Do not add generic medical knowledge; if the research does not support something, omit it. Keep possible causes and when to see a doctor specific to the user's symptoms and the research.
+
+Use this exact format. For Urgency use only one word: Low, Medium, or High.
+Example: Possible causes: [1–2 short phrases from research]. Urgency: Medium. When to see a doctor: [1 short sentence]. No disclaimer. Reply in 50–60 words."""
+    user = f"Symptoms: {symptoms}\n\nResearch section above:\n{ctx}\n\nYour reply (same format; Urgency = one word only):"
     try:
         from langchain_google_genai import ChatGoogleGenerativeAI
         from langchain_core.messages import SystemMessage, HumanMessage
@@ -144,12 +147,32 @@ def _rag_reply(symptoms: str, abstracts: list[dict], severity: str) -> tuple[str
         r = llm.invoke([SystemMessage(content=sys), HumanMessage(content=user)])
         reply = (r.content or "").strip()
         reply = _drop_disclaimer(reply)
-        reply = _truncate_to_words(reply, 80)
+        reply = _normalize_urgency(reply, severity)
+        reply = _truncate_to_words(reply, 60)
         if reply:
             return reply, severity
     except Exception as e:
         logger.warning("RAG reply failed: %s", e)
     return _fallback(severity), severity
+
+
+def _normalize_urgency(text: str, severity: str) -> str:
+    """Force 'Urgency: ...' to be exactly 1 word: Low, Medium, or High. Mapping: M3→High, M2→Medium, M0/M1→Low."""
+    # Severity → default urgency when model ignores instruction
+    severity_to_urgency = {"M3": "High", "M2": "Medium", "M1": "Low", "M0": "Low"}
+    urgency_word = severity_to_urgency.get(severity, "Medium")
+    m = re.search(r"(\bUrgency\s*:\s*)(.+?)(?=\s*When to see|$)", text, re.IGNORECASE | re.DOTALL)
+    if m:
+        rest = m.group(2).strip().rstrip(".").strip()
+        first = rest.split()[0].lower() if rest.split() else ""
+        if first in ("low", "medium", "high"):
+            # Already one word (maybe with punctuation); normalize to single word
+            replacement = first.capitalize()
+        else:
+            replacement = urgency_word
+        before, after = text[: m.start(2)], text[m.end(2) :]
+        text = before + replacement + after
+    return text
 
 
 def _drop_disclaimer(text: str) -> str:
