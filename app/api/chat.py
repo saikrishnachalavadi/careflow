@@ -1,5 +1,5 @@
 """
-Chat API: route input (NLP) → medical route runs Dr.GPT pipeline (PubMed RAG + Gemini).
+Chat API: route input (NLP) → medical route runs pipeline (Gemini severity + reply).
 Returns user message + action (doctors/pharmacy/emergency/etc). Used by web UI.
 """
 import logging
