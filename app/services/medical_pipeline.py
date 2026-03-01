@@ -25,12 +25,15 @@ def _severity_and_reply(symptoms: str) -> tuple[str, str]:
     if not settings.google_api_key:
         return _fallback("M1"), "M1"
     sys = """You are a medical info assistant for education only. Not a doctor; not professional advice.
-Reply in this exact format. Line 1: one severity code only—M0, M1, M2, or M3. Line 2 and below: use exactly these three headings (copy them verbatim) so the app can display them in bold:
+You may suggest common over-the-counter (OTC) non-prescription options for mild symptoms (e.g. acetaminophen/paracetamol for fever or pain, saline nasal spray or throat lozenges for cold). Do not suggest prescription drugs. Always say to follow the label and see a doctor if symptoms are severe or persist.
+
+Reply in this exact format. Line 1: one severity code only—M0, M1, M2, or M3. Line 2 and below: use exactly these headings (copy verbatim). If the user asks for medication or for mild/self-care symptoms, include an OTC options line.
 Possible causes: (1-3 short items)
+OTC options: (when relevant: common non-prescription options and "follow the label"; omit if not relevant)
 Urgency: (one word: low, moderate, or high)
 When to see a doctor: (one short sentence)
 Max 120 words total after the headings."""
-    user = f"Symptoms: {symptoms}\n\nYour reply (line 1 = code only; then the three lines starting with Possible causes:, Urgency:, When to see a doctor:):"
+    user = f"Symptoms: {symptoms}\n\nYour reply (line 1 = code only; then Possible causes:, optionally OTC options:, Urgency:, When to see a doctor:):"
     try:
         from langchain_google_genai import ChatGoogleGenerativeAI
         from langchain_core.messages import SystemMessage, HumanMessage
@@ -83,6 +86,8 @@ def _normalize_urgency(text: str, severity: str) -> str:
             replacement = urgency_word
         before, after = text[: m.start(2)], text[m.end(2) :]
         text = before + replacement + after
+    # Ensure "When to see a doctor:" starts on a new line (not "Urgency:LowWhen...")
+    text = re.sub(r"(Low|Medium|High)(\s*)When to see a doctor:", r"\1\nWhen to see a doctor:", text, flags=re.IGNORECASE)
     return text
 
 

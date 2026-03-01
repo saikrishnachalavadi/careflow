@@ -472,7 +472,7 @@
 
     function renderMessage(text) {
       var s = escapeHtml(text || '').replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
-      var subtitleLabels = ['Possible causes:', 'Probable causes:', 'Urgency:', 'When to see a doctor:'];
+      var subtitleLabels = ['Possible causes:', 'Probable causes:', 'OTC options:', 'Urgency:', 'When to see a doctor:'];
       subtitleLabels.forEach(function(label) {
         var re = new RegExp('(' + label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
         s = s.replace(re, '<span class="subtitle">$1</span>');
