@@ -18,7 +18,7 @@ TIMEOUT = 12.0
 
 def run_medical_pipeline(symptoms: str) -> tuple[str, str]:
     """
-    Dr.GPT flow: PubMed RAG (3 abstracts, 500–600 chars each) → severity-only call → RAG-reply call.
+    Dr.GPT flow: PubMed RAG (5 abstracts, 1000 chars each) → severity-only call → RAG-reply call.
     Returns (message, severity_medical). On failure, returns fallback message and "M1".
     """
     symptoms = (symptoms or "").strip()[:2000]
@@ -26,7 +26,7 @@ def run_medical_pipeline(symptoms: str) -> tuple[str, str]:
         return _fallback("M1"), "M1"
     entities = _extract_entities(symptoms)
     query = _query(symptoms, entities)
-    abstracts = _pubmed(query, 3)
+    abstracts = _pubmed(query, 5)
     severity = _severity_only(symptoms)
     return _rag_reply(symptoms, abstracts, severity)
 
@@ -102,7 +102,7 @@ def _pubmed(query: str, n: int) -> list[dict]:
                 break
             for ab in a.iter("Abstract"):
                 for at in ab.iter("AbstractText"):
-                    abstract = (at.text or " ".join(at.itertext())).strip()[:600]
+                    abstract = (at.text or " ".join(at.itertext())).strip()[:1000]
                     break
             break
         out.append({"pmid": pmid, "title": title, "abstract": abstract})
@@ -133,7 +133,7 @@ def _rag_reply(symptoms: str, abstracts: list[dict], severity: str) -> tuple[str
     if not settings.google_api_key:
         return _fallback(severity), severity
     ctx = "\n\n".join(
-        (f"[{a.get('title','')}] {a.get('abstract','')}".strip() for a in abstracts[:3] if a.get("abstract"))
+        (f"[{a.get('title','')}] {a.get('abstract','')}".strip() for a in abstracts[:5] if a.get("abstract"))
     ) or "(No abstracts retrieved.)"
     sys = """You are a medical info assistant. Use the Research section above. Keep possible causes, urgency, and when to see a doctor specific to the user's symptoms and to the research—do not give generic filler. Reply in 60–80 words. Use format: Possible causes: ... Urgency: ... When to see a doctor: ... No disclaimer."""
     user = f"Symptoms: {symptoms}\n\nResearch section above:\n{ctx}\n\nYour reply (60–80 words, grounded in the research):"
