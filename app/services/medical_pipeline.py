@@ -109,31 +109,54 @@ def _pubmed(query: str, n: int) -> list[dict]:
 
 
 def _gemini_reply(symptoms: str, abstracts: list[dict], severity: str) -> str:
-    """One prompt: symptoms + PubMed context + severity → brief educational reply (disclaimer)."""
+    """One prompt: symptoms + PubMed context + severity → reply in at most 25 words, no disclaimer."""
     if not settings.google_api_key:
         return _fallback(severity)
     ctx = "\n\n".join(
         (f"[{a.get('title','')}] {a.get('abstract','')}".strip() for a in abstracts[:5] if a.get("abstract"))
     ) or "(No abstracts retrieved.)"
     sev = {"M3": "High urgency.", "M2": "Moderate; consider a doctor.", "M1": "Low.", "M0": "Low."}.get(severity, "Consider evaluation.")
-    sys = """You are a medical info assistant for education only. Not a doctor; not professional advice.
-In max 120 words: 1) Possible causes (1–3). 2) Urgency: low/moderate/high. 3) When to see a doctor.
-End with: "For educational purposes only; not a substitute for professional medical advice." Be concise."""
-    user = f"Symptoms: {symptoms}\nSeverity note: {sev}\nResearch:\n{ctx}\nReply:"
+    sys = """You are a medical info assistant. Reply in at most 25 words. Do not include any disclaimer or phrase like "for educational purposes" or "not medical advice". Give only: possible cause(s), urgency (low/moderate/high), and when to see a doctor. Be concise."""
+    user = f"Symptoms: {symptoms}\nSeverity: {sev}\nResearch:\n{ctx}\nReply (max 25 words, no disclaimer):"
     try:
         from langchain_google_genai import ChatGoogleGenerativeAI
         from langchain_core.messages import SystemMessage, HumanMessage
         llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=settings.google_api_key)
         r = llm.invoke([SystemMessage(content=sys), HumanMessage(content=user)])
         t = (r.content or "").strip()
-        if t and len(t) < 1800:
+        t = _drop_disclaimer(t)
+        t = _truncate_to_words(t, 25)
+        if t:
             return t
     except Exception as e:
         logger.warning("Gemini medical reply failed: %s", e)
     return _fallback(severity)
 
 
+def _drop_disclaimer(text: str) -> str:
+    """Remove common disclaimer sentence if present."""
+    for phrase in (
+        "for educational purposes only",
+        "not a substitute for professional medical advice",
+        "not medical advice",
+    ):
+        idx = text.lower().find(phrase)
+        if idx != -1:
+            before = text[:idx].rstrip().rstrip(".;")
+            after = text[idx + len(phrase):].lstrip().lstrip(".;")
+            text = (before + " " + after).strip()
+    return text.strip()
+
+
+def _truncate_to_words(text: str, max_words: int) -> str:
+    """If over max_words, truncate to first max_words words."""
+    words = text.split()
+    if len(words) <= max_words:
+        return text
+    return " ".join(words[:max_words])
+
+
 def _fallback(severity: str) -> str:
     if severity == "M3":
-        return "This may need prompt care. Please seek help or call emergency services if needed. For educational purposes only; not a substitute for professional medical advice."
-    return "Consider speaking with a doctor for evaluation. For educational purposes only; not a substitute for professional medical advice."
+        return "May need prompt care. Seek help or call emergency services if needed."
+    return "Consider speaking with a doctor for evaluation."

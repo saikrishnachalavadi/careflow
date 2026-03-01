@@ -100,9 +100,10 @@
       border-bottom-left-radius: 0.25rem;
     }
     .msg.bot .text { margin: 0; }
+    .msg.bot .text { color: #1e40af; font-weight: bold; }
     .msg.bot .text strong { color: #1e40af; }
     .msg.error { background: #fef2f2; border-color: #f87171; }
-    .msg .actions { margin-top: 0.75rem; }
+    .msg .actions { margin-top: 0.75rem; display: flex; flex-wrap: wrap; gap: 0.5rem; }
     .msg .btn {
       display: inline-block;
       padding: 0.4rem 0.75rem;
@@ -504,7 +505,11 @@
         let html = '<div class="text">' + content + '</div>';
         if (action && actionLabel) {
           var dataSpecialty = (actionMeta && actionMeta.doctor_specialty) ? (' data-doctor-specialty="' + escapeHtml(actionMeta.doctor_specialty) + '"') : '';
-          html += '<div class="actions"><button type="button" class="btn" data-action="' + escapeHtml(action) + '"' + dataSpecialty + '>' + escapeHtml(actionLabel) + '</button></div>';
+          html += '<div class="actions"><button type="button" class="btn" data-action="' + escapeHtml(action) + '"' + dataSpecialty + '>' + escapeHtml(actionLabel) + '</button>';
+          if (action === 'pharmacy') {
+            html += '<button type="button" class="btn" data-action="doctors">Find doctors (nearby)</button>';
+          }
+          html += '</div>';
         }
         div.innerHTML = html;
         div.querySelectorAll('.btn').forEach(btn => {
