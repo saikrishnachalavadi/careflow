@@ -413,6 +413,8 @@ DIRECT_INTENT_MAP = {
         "find pharmacy", "where is a pharmacy", "pharmacies near",
         "buy medicine", "buy medication", "where to buy medicine",
         "need to buy", "get medicine from", "otc near me",
+        "i need medicine", "need medicine", "want medicine",
+        "i need medication", "need medication",
     ],
     "lab_handoff": [
         "book a lab test", "i need a blood test", "lab test",

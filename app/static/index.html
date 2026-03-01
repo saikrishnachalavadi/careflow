@@ -515,6 +515,9 @@
           if (action === 'pharmacy') {
             html += '<button type="button" class="btn" data-action="doctors">Find doctors (nearby)</button>';
           }
+          if (action === 'doctors') {
+            html += '<button type="button" class="btn" data-action="pharmacy">Find pharmacy (nearby or online)</button>';
+          }
           html += '</div>';
         }
         div.innerHTML = html;
