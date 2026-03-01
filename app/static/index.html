@@ -521,7 +521,7 @@
         botPopupEl.classList.add('show');
         botPopupEl.setAttribute('aria-hidden', 'false');
         if (botChatEl.children.length === 0) {
-          botAddMsg('Ask me anything health-related (educational only). For prescription advice and routing use the main chat.', false);
+          botAddMsg('Ask me anything health-related. For prescription advice and routing use the main chat.', false);
         }
         botInputEl.focus();
       }
@@ -543,17 +543,21 @@
         botHistory.push({ role: 'user', content: text });
         botAddTyping();
         botSendBtn.disabled = true;
+        var uid = userId || getOrCreateAnonId();
         fetch('/chat/bot', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ message: text, history: botHistory.slice(0, -1) })
+          body: JSON.stringify({ message: text, history: botHistory.slice(0, -1), user_id: uid })
         }).then(function(res) { return res.json().then(function(data) { return { res: res, data: data }; }); }).then(function(_) {
           var reply = (_.data && _.data.reply) ? _.data.reply : 'Something went wrong. Try again.';
           if (!_.res.ok) reply = 'Something went wrong. Try again.';
           botRemoveTyping();
           botAddMsg(reply, false);
           botHistory.push({ role: 'assistant', content: reply });
+          if (_.data && _.data.remaining_prompts !== undefined && _.data.remaining_prompts !== null) {
+            updatePromptsLeft(_.data.remaining_prompts);
+          }
         }).catch(function() {
           botRemoveTyping();
           botAddMsg('Request failed. Try again.', false);

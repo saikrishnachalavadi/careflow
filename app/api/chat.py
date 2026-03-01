@@ -271,8 +271,35 @@ async def chat(http_request: Request, request: ChatRequest, db: Session = Depend
 
 
 @router.post("/bot", response_model=BotChatResponse)
-async def chat_bot(request: BotChatRequest):
-    """Medical chat bot (CrewAI agent). Third LLM call."""
+async def chat_bot(http_request: Request, request: BotChatRequest, db: Session = Depends(get_db)):
+    """Medical chat bot (CrewAI agent). Third LLM call. Same message limits as main chat: 6 anon, 20 logged-in, many for tester."""
+    cookie_user_id, _, _ = get_current_user_from_request(http_request)
+    effective_user_id = cookie_user_id if cookie_user_id else (request.user_id or "")
+    if not effective_user_id:
+        return BotChatResponse(reply="Please sign in or refresh the page to use the medical bot.", remaining_prompts=None)
+
+    try:
+        user = db.query(User).filter(User.id == effective_user_id).first()
+    except Exception as e:
+        logger.exception("Database error loading user for bot")
+        return BotChatResponse(reply="Service temporarily unavailable. Try again.", remaining_prompts=None)
+
+    limit = get_message_limit_for_user(effective_user_id, user)
+    session, session_error = _get_or_create_session(db, effective_user_id)
+    if session_error:
+        return BotChatResponse(reply=session_error, remaining_prompts=None)
+    if (session.message_count or 0) >= limit:
+        return BotChatResponse(
+            reply=_limit_reached_message(limit),
+            remaining_prompts=0,
+        )
+
     history = [{"role": m.role, "content": m.content} for m in (request.history or [])]
     reply = run_bot(request.message, history=history)
-    return BotChatResponse(reply=reply)
+
+    session.last_activity = datetime.utcnow()
+    session.message_count = (session.message_count or 0) + 1
+    db.commit()
+
+    remaining = limit - session.message_count
+    return BotChatResponse(reply=reply, remaining_prompts=remaining)

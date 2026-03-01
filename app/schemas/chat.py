@@ -25,7 +25,10 @@ class BotMessage(BaseModel):
 class BotChatRequest(BaseModel):
     message: str
     history: Optional[List[BotMessage]] = None
+    user_id: Optional[str] = None  # for anonymous; when absent, auth cookie is used
+    session_id: Optional[str] = None
 
 
 class BotChatResponse(BaseModel):
     reply: str
+    remaining_prompts: Optional[int] = None  # same pool as main chat: 6 anon, 20 logged-in, many for tester

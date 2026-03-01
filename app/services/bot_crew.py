@@ -57,23 +57,26 @@ def run_bot(message: str, history: Optional[List[dict]] = None) -> str:
             temperature=0.4,
         )
         medical_agent = Agent(
-            role="Medical information assistant",
-            goal="Answer health-related questions in a clear, educational, and non-diagnostic way.",
+            role="Medical assistant",
+            goal="Answer medical and health questions helpfully: explain conditions, suggest common OTC options where appropriate, and give practical guidance. Only restriction: respond only to medical/health topics; decline non-medical questions.",
             backstory=(
-                "You are a helpful assistant within CareFlow. You provide general health information "
-                "and education. You never diagnose or prescribe. You encourage users to see a doctor "
-                "when needed and keep replies concise (under 150 words when possible)."
+                "You are CareFlow's medical bot. You give clear, useful health information. You may suggest "
+                "common over-the-counter options (e.g. acetaminophen for fever, throat lozenges for sore throat) "
+                "and when to see a doctor. Do not prescribe prescription drugs. If the user asks something "
+                "not related to health or medicine, politely say you only answer medical questions. Keep replies "
+                "concise (under 150 words when possible)."
             ),
             llm=llm,
             verbose=False,
         )
         task = Task(
             description=(
-                "Based on the following conversation, reply to the user's latest message. "
-                "Be helpful, accurate, and non-diagnostic. Do not prescribe or diagnose. "
-                "Keep the reply concise.\n\nConversation:\n" + context
+                "Reply to the user's latest message. You may recommend common OTC options and give practical "
+                "health advice. Do not prescribe prescription medicines. If the question is not about health or "
+                "medicine, say you only answer medical questions. Otherwise be helpful and concise.\n\n"
+                "Conversation:\n" + context
             ),
-            expected_output="A single concise reply to the user (plain text, no bullet list unless helpful).",
+            expected_output="A single concise, helpful reply (plain text).",
             agent=medical_agent,
         )
         crew = Crew(agents=[medical_agent], tasks=[task], process=Process.sequential)
