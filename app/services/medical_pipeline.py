@@ -1,6 +1,6 @@
 """
 Dr.GPT-style pipeline: symptoms → (optional AWS entities) → PubMed RAG → Gemini → educational reply.
-Single entry: run_medical_pipeline(symptoms, severity). Safe fallbacks if APIs fail.
+Single entry: run_medical_pipeline(symptoms). Severity-only call then RAG-reply call. Safe fallbacks if APIs fail.
 """
 import logging
 import re
@@ -18,7 +18,7 @@ TIMEOUT = 12.0
 
 def run_medical_pipeline(symptoms: str) -> tuple[str, str]:
     """
-    Dr.GPT flow: PubMed RAG (2 short snippets) → single Gemini call → (reply, severity).
+    Dr.GPT flow: PubMed RAG (3 abstracts, 500–600 chars each) → severity-only call → RAG-reply call.
     Returns (message, severity_medical). On failure, returns fallback message and "M1".
     """
     symptoms = (symptoms or "").strip()[:2000]
@@ -26,8 +26,9 @@ def run_medical_pipeline(symptoms: str) -> tuple[str, str]:
         return _fallback("M1"), "M1"
     entities = _extract_entities(symptoms)
     query = _query(symptoms, entities)
-    abstracts = _pubmed(query, 2)
-    return _gemini_reply(symptoms, abstracts)
+    abstracts = _pubmed(query, 3)
+    severity = _severity_only(symptoms)
+    return _rag_reply(symptoms, abstracts, severity)
 
 
 def _extract_entities(text: str) -> dict:
@@ -101,45 +102,54 @@ def _pubmed(query: str, n: int) -> list[dict]:
                 break
             for ab in a.iter("Abstract"):
                 for at in ab.iter("AbstractText"):
-                    abstract = (at.text or " ".join(at.itertext())).strip()[:300]
+                    abstract = (at.text or " ".join(at.itertext())).strip()[:600]
                     break
             break
         out.append({"pmid": pmid, "title": title, "abstract": abstract})
     return out
 
 
-def _gemini_reply(symptoms: str, abstracts: list[dict]) -> tuple[str, str]:
-    """Single call: symptoms + short PubMed context → severity + reply (max 50 words). Returns (message, M0|M1|M2|M3)."""
+def _severity_only(symptoms: str) -> str:
+    """One small call: symptoms only → M0|M1|M2|M3."""
     if not settings.google_api_key:
-        return _fallback("M1"), "M1"
-    ctx = "\n".join(
-        (f"{a.get('title','')} {a.get('abstract','')}".strip()[:320] for a in abstracts[:2] if a.get("abstract"))
-    ) or "(No abstracts.)"
-    sys = """You are a medical info assistant. Reply with exactly two lines:
-Line 1: SEVERITY: then one of M0, M1, M2, M3 (M0=no concern, M1=low, M2=moderate, M3=emergency).
-Line 2: REPLY: then your answer in at most 50 words. Use format "Possible causes: ... Urgency: ... When to see a doctor: ..." No disclaimer."""
-    user = f"Symptoms: {symptoms}\nResearch:\n{ctx}\nYour two lines:"
+        return "M1"
+    try:
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        from langchain_core.messages import SystemMessage, HumanMessage
+        llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=settings.google_api_key)
+        sys = "You are a triage assistant. Reply with ONLY one code: M0, M1, M2, or M3. M0=no concern, M1=low/self-care, M2=moderate/see doctor, M3=emergency. No other text."
+        r = llm.invoke([SystemMessage(content=sys), HumanMessage(content=symptoms)])
+        raw = (r.content or "").strip().upper()
+        for code in ("M3", "M2", "M0", "M1"):
+            if code in raw:
+                return code
+    except Exception as e:
+        logger.debug("Severity call failed: %s", e)
+    return "M1"
+
+
+def _rag_reply(symptoms: str, abstracts: list[dict], severity: str) -> tuple[str, str]:
+    """One call: use the Research section above; keep causes/urgency specific to symptoms and research; 60–80 words."""
+    if not settings.google_api_key:
+        return _fallback(severity), severity
+    ctx = "\n\n".join(
+        (f"[{a.get('title','')}] {a.get('abstract','')}".strip() for a in abstracts[:3] if a.get("abstract"))
+    ) or "(No abstracts retrieved.)"
+    sys = """You are a medical info assistant. Use the Research section above. Keep possible causes, urgency, and when to see a doctor specific to the user's symptoms and to the research—do not give generic filler. Reply in 60–80 words. Use format: Possible causes: ... Urgency: ... When to see a doctor: ... No disclaimer."""
+    user = f"Symptoms: {symptoms}\n\nResearch section above:\n{ctx}\n\nYour reply (60–80 words, grounded in the research):"
     try:
         from langchain_google_genai import ChatGoogleGenerativeAI
         from langchain_core.messages import SystemMessage, HumanMessage
         llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=settings.google_api_key)
         r = llm.invoke([SystemMessage(content=sys), HumanMessage(content=user)])
-        raw = (r.content or "").strip()
-        severity = "M1"
-        for code in ("M3", "M2", "M0", "M1"):
-            if f"SEVERITY: {code}" in raw.upper() or f"SEVERITY:{code}" in raw.upper():
-                severity = code
-                break
-        reply = raw
-        if "REPLY:" in raw:
-            reply = raw.split("REPLY:")[-1].strip()
+        reply = (r.content or "").strip()
         reply = _drop_disclaimer(reply)
-        reply = _truncate_to_words(reply, 50)
+        reply = _truncate_to_words(reply, 80)
         if reply:
             return reply, severity
     except Exception as e:
-        logger.warning("Gemini medical reply failed: %s", e)
-    return _fallback("M1"), "M1"
+        logger.warning("RAG reply failed: %s", e)
+    return _fallback(severity), severity
 
 
 def _drop_disclaimer(text: str) -> str:
