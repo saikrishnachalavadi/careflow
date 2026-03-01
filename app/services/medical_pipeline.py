@@ -16,18 +16,18 @@ PUBMED = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
 TIMEOUT = 12.0
 
 
-def run_medical_pipeline(symptoms: str, severity: str) -> str:
+def run_medical_pipeline(symptoms: str) -> tuple[str, str]:
     """
-    Dr.GPT flow: extract entities (if AWS) → PubMed search → Gemini with context → reply.
-    Returns educational, disclaimer-led text. On any failure, returns safe fallback.
+    Dr.GPT flow: PubMed RAG (2 short snippets) → single Gemini call → (reply, severity).
+    Returns (message, severity_medical). On failure, returns fallback message and "M1".
     """
     symptoms = (symptoms or "").strip()[:2000]
     if not symptoms:
-        return _fallback(severity)
+        return _fallback("M1"), "M1"
     entities = _extract_entities(symptoms)
     query = _query(symptoms, entities)
-    abstracts = _pubmed(query, 5)
-    return _gemini_reply(symptoms, abstracts, severity)
+    abstracts = _pubmed(query, 2)
+    return _gemini_reply(symptoms, abstracts)
 
 
 def _extract_entities(text: str) -> dict:
@@ -101,36 +101,45 @@ def _pubmed(query: str, n: int) -> list[dict]:
                 break
             for ab in a.iter("Abstract"):
                 for at in ab.iter("AbstractText"):
-                    abstract = (at.text or " ".join(at.itertext())).strip()[:1500]
+                    abstract = (at.text or " ".join(at.itertext())).strip()[:300]
                     break
             break
         out.append({"pmid": pmid, "title": title, "abstract": abstract})
     return out
 
 
-def _gemini_reply(symptoms: str, abstracts: list[dict], severity: str) -> str:
-    """One prompt: symptoms + PubMed context + severity → reply in at most 25 words, no disclaimer."""
+def _gemini_reply(symptoms: str, abstracts: list[dict]) -> tuple[str, str]:
+    """Single call: symptoms + short PubMed context → severity + reply (max 50 words). Returns (message, M0|M1|M2|M3)."""
     if not settings.google_api_key:
-        return _fallback(severity)
-    ctx = "\n\n".join(
-        (f"[{a.get('title','')}] {a.get('abstract','')}".strip() for a in abstracts[:5] if a.get("abstract"))
-    ) or "(No abstracts retrieved.)"
-    sev = {"M3": "High urgency.", "M2": "Moderate; consider a doctor.", "M1": "Low.", "M0": "Low."}.get(severity, "Consider evaluation.")
-    sys = """You are a medical info assistant. Reply in at most 25 words. Do not include any disclaimer or phrase like "for educational purposes" or "not medical advice". Give only: possible cause(s), urgency (low/moderate/high), and when to see a doctor. Be concise."""
-    user = f"Symptoms: {symptoms}\nSeverity: {sev}\nResearch:\n{ctx}\nReply (max 25 words, no disclaimer):"
+        return _fallback("M1"), "M1"
+    ctx = "\n".join(
+        (f"{a.get('title','')} {a.get('abstract','')}".strip()[:320] for a in abstracts[:2] if a.get("abstract"))
+    ) or "(No abstracts.)"
+    sys = """You are a medical info assistant. Reply with exactly two lines:
+Line 1: SEVERITY: then one of M0, M1, M2, M3 (M0=no concern, M1=low, M2=moderate, M3=emergency).
+Line 2: REPLY: then your answer in at most 50 words. Use format "Possible causes: ... Urgency: ... When to see a doctor: ..." No disclaimer."""
+    user = f"Symptoms: {symptoms}\nResearch:\n{ctx}\nYour two lines:"
     try:
         from langchain_google_genai import ChatGoogleGenerativeAI
         from langchain_core.messages import SystemMessage, HumanMessage
         llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=settings.google_api_key)
         r = llm.invoke([SystemMessage(content=sys), HumanMessage(content=user)])
-        t = (r.content or "").strip()
-        t = _drop_disclaimer(t)
-        t = _truncate_to_words(t, 25)
-        if t:
-            return t
+        raw = (r.content or "").strip()
+        severity = "M1"
+        for code in ("M3", "M2", "M0", "M1"):
+            if f"SEVERITY: {code}" in raw.upper() or f"SEVERITY:{code}" in raw.upper():
+                severity = code
+                break
+        reply = raw
+        if "REPLY:" in raw:
+            reply = raw.split("REPLY:")[-1].strip()
+        reply = _drop_disclaimer(reply)
+        reply = _truncate_to_words(reply, 50)
+        if reply:
+            return reply, severity
     except Exception as e:
         logger.warning("Gemini medical reply failed: %s", e)
-    return _fallback(severity)
+    return _fallback("M1"), "M1"
 
 
 def _drop_disclaimer(text: str) -> str:
@@ -158,5 +167,5 @@ def _truncate_to_words(text: str, max_words: int) -> str:
 
 def _fallback(severity: str) -> str:
     if severity == "M3":
-        return "May need prompt care. Seek help or call emergency services if needed."
-    return "Consider speaking with a doctor for evaluation."
+        return "Possible causes: Needs assessment. Urgency: High. See doctor or emergency services now."
+    return "Possible causes: Unclear. Urgency: Low. Consider speaking with a doctor for evaluation."

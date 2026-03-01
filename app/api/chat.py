@@ -230,22 +230,28 @@ async def chat(http_request: Request, request: ChatRequest, db: Session = Depend
     doctor_suggestion_text = result.get("doctor_suggestion_text")
 
     if route == "medical":
-        severity_medical, severity_psychological = calculate_severity([request.message])
-
-    msg, action = _user_message(
-        request.message,
-        route, severity_medical, severity_psychological, block_reason,
-        doctor_specialty=doctor_specialty,
-        doctor_suggestion_text=doctor_suggestion_text,
-    )
-
-    if route == "medical":
         try:
-            msg = run_medical_pipeline(request.message, severity_medical)
-            if action == "doctors" and "nearby" not in msg.lower():
-                msg = msg.rstrip() + " I can help you find a doctor nearby if you share your location."
+            msg, severity_medical = run_medical_pipeline(request.message)
+            severity_psychological = "P0"
         except Exception as e:
             logger.warning("Medical pipeline failed: %s", e)
+            severity_medical, severity_psychological = calculate_severity([request.message])
+            msg, _ = _user_message(
+                request.message, route, severity_medical, severity_psychological, block_reason,
+                doctor_specialty=doctor_specialty, doctor_suggestion_text=doctor_suggestion_text,
+            )
+        else:
+            if "nearby" not in msg.lower():
+                msg = msg.rstrip() + " I can help you find a doctor nearby if you share your location."
+        _, action = _user_message(
+            request.message, route, severity_medical, severity_psychological, block_reason,
+            doctor_specialty=doctor_specialty, doctor_suggestion_text=doctor_suggestion_text,
+        )
+    else:
+        msg, action = _user_message(
+            request.message, route, "M1", "P0", block_reason,
+            doctor_specialty=doctor_specialty, doctor_suggestion_text=doctor_suggestion_text,
+        )
 
     remaining = limit - session.message_count
     return ChatResponse(

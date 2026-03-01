@@ -99,9 +99,9 @@
       border: 1px solid #e2e8f0;
       border-bottom-left-radius: 0.25rem;
     }
-    .msg.bot .text { margin: 0; }
-    .msg.bot .text { color: #1e40af; font-weight: bold; }
-    .msg.bot .text strong { color: #1e40af; }
+    .msg.bot .text { margin: 0; color: #1a1a2e; font-weight: normal; }
+    .msg.bot .text .subtitle { color: #1e40af; font-weight: bold; }
+    .msg.bot .text strong { color: #1e40af; font-weight: bold; }
     .msg.error { background: #fef2f2; border-color: #f87171; }
     .msg .actions { margin-top: 0.75rem; display: flex; flex-wrap: wrap; gap: 0.5rem; }
     .msg .btn {
@@ -471,7 +471,13 @@
     }
 
     function renderMessage(text) {
-      return escapeHtml(text || '').replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
+      var s = escapeHtml(text || '').replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
+      var subtitleLabels = ['Possible causes:', 'Probable causes:', 'Urgency:', 'When to see a doctor:'];
+      subtitleLabels.forEach(function(label) {
+        var re = new RegExp('(' + label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+        s = s.replace(re, '<span class="subtitle">$1</span>');
+      });
+      return s;
     }
 
     var DOCTOR_SPECIALTY_OPTIONS = [
