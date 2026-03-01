@@ -142,8 +142,6 @@ async def login_post(body: LoginRequest, response: Response, db: Session = Depen
     user = db.query(User).filter(User.username == username).first()
     if not user:
         raise HTTPException(status_code=401, detail="Invalid username or password")
-    if not getattr(user, "email_verified", 1):
-        raise HTTPException(status_code=403, detail="Please verify your email first. Check your inbox for the verification link.")
     stored = getattr(user, "password_hash", None) or ""
     if password != stored:
         raise HTTPException(status_code=401, detail="Invalid username or password")
