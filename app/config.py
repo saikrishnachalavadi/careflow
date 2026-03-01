@@ -57,6 +57,13 @@ class Settings(BaseSettings):
     # OTC limits
     max_otc_attempts: int = 3
 
+    # Medical pipeline: AWS Comprehend Medical (optional; pipeline works without it)
+    aws_region: Optional[str] = None
+    aws_access_key_id: Optional[str] = None
+    aws_secret_access_key: Optional[str] = None
+    # PubMed E-utilities are free; optional key for higher rate limit
+    pubmed_api_key: Optional[str] = None
+
     class Config:
         env_file = ".env"
 

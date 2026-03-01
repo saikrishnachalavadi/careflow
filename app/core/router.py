@@ -319,20 +319,8 @@
 #     result = router_graph.invoke(initial_state)
 #     return result
 """
-CareFlow Input Router — LangGraph StateGraph
-
-This is the central nervous system of CareFlow.
-It takes user input and routes it through:
-  1. Guardrails check (medical scope + abuse strikes)
-  2. Emergency keyword detection
-  3. User intent override (direct handoff requests)
-  4. AI-powered classification (Gemini) → route to correct flow
-
-Routes to:
-  - emergency   → emergency confirmation + services
-  - medical     → triage + severity scoring + handoff (includes mental health)
-  - doctor_handoff / pharmacy_handoff / lab_handoff → direct skip
-  - blocked     → abuse / out-of-scope
+Router: guardrails → emergency/intent checks → Gemini classify → route.
+Medical route → chat runs Dr.GPT pipeline (PubMed RAG + Gemini) for educational reply.
 """
 
 import re

@@ -16,5 +16,8 @@ langchain-google-genai>=0.0.6
 langgraph>=0.0.20
 crewai>=0.1.0
 
+# Medical pipeline: AWS Comprehend Medical
+boto3>=1.34.0
+
 # Monitoring
 langsmith>=0.0.87

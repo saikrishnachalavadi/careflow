@@ -1,6 +1,6 @@
 """
-Chat API: same routing as triage but returns only user-facing message + optional action.
-No severity or internal data. Used by the web UI.
+Chat API: route input (NLP) → medical route runs Dr.GPT pipeline (PubMed RAG + Gemini).
+Returns user message + action (doctors/pharmacy/emergency/etc). Used by web UI.
 """
 import logging
 from datetime import datetime
@@ -17,6 +17,7 @@ from app.core.severity import calculate_severity
 from app.core.auth_utils import get_current_user_from_request, get_message_limit_for_user
 from app.config import settings
 from app.api.triage import _get_or_create_session
+from app.services.medical_pipeline import run_medical_pipeline
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -84,40 +85,26 @@ def _route_to_action(route: str) -> Optional[str]:
     return "medical"
 
 
-# Human-readable labels for doctor specialty (for messages). Unknown specialties are formatted as "a/an {specialty}".
-DOCTOR_SPECIALTY_LABELS = {
+# Short list for template messages; LLM can suggest others
+_SPECIALTY_LABELS = {
     "general_physician": "a general physician",
-    "pediatrician": "a pediatrician (children's doctor)",
+    "pediatrician": "a pediatrician",
     "dermatologist": "a dermatologist",
     "cardiologist": "a cardiologist",
-    "gynecologist": "a gynecologist",
-    "orthopedic": "an orthopedic specialist",
     "psychiatrist": "a psychiatrist",
-    "clinic": "a doctor or clinic",
-    "neurologist": "a neurologist",
+    "orthopedic": "an orthopedic specialist",
     "dentist": "a dentist",
-    "ophthalmologist": "an ophthalmologist",
-    "ent": "an ENT specialist",
-    "gastroenterologist": "a gastroenterologist",
-    "pulmonologist": "a pulmonologist",
-    "nephrologist": "a nephrologist",
-    "urologist": "a urologist",
-    "rheumatologist": "a rheumatologist",
-    "endocrinologist": "an endocrinologist",
+    "gynecologist": "a gynecologist",
 }
 
 
-def _doctor_specialty_label(specialty: Optional[str]) -> str:
+def _doctor_label(specialty: Optional[str]) -> str:
     if not specialty:
         return "a doctor"
-    if specialty in DOCTOR_SPECIALTY_LABELS:
-        return DOCTOR_SPECIALTY_LABELS[specialty]
-    # Free-form from LLM: "a neurologist", "an orthopedist" etc.
-    phrase = specialty.replace("_", " ").strip()
-    if not phrase:
-        return "a doctor"
-    article = "an" if phrase[0] in "aeiou" else "a"
-    return f"{article} {phrase}"
+    if specialty in _SPECIALTY_LABELS:
+        return _SPECIALTY_LABELS[specialty]
+    p = specialty.replace("_", " ").strip()
+    return f"{'an' if p and p[0] in 'aeiou' else 'a'} {p}" if p else "a doctor"
 
 
 def _user_message(
@@ -137,8 +124,7 @@ def _user_message(
     if route == "emergency":
         return ("Opening nearby emergency services.", "emergency_services")
     if route == "doctor_handoff":
-        doc_label = _doctor_specialty_label(doctor_specialty)
-        return (f"I can help you find {doc_label}. Share your location to see nearby options.", "doctors")
+        return (f"I can help you find {_doctor_label(doctor_specialty)}. Share your location to see nearby options.", "doctors")
     if route == "pharmacy_handoff":
         otc = _otc_suggestion_for_message(user_message)
         if otc:
@@ -167,15 +153,8 @@ def _user_message(
                 "psychological",
             )
         if doctor_suggestion_text:
-            return (
-                f"{doctor_suggestion_text} I can help you find one nearby if you share your location.",
-                "doctors",
-            )
-        doc_label = _doctor_specialty_label(doctor_specialty)
-        return (
-            f"Based on what you've described, I recommend speaking with {doc_label}. I can help you find one nearby if you share your location.",
-            "doctors",
-        )
+            return (f"{doctor_suggestion_text} I can help you find one nearby if you share your location.", "doctors")
+        return (f"Based on what you've described, I recommend speaking with {_doctor_label(doctor_specialty)}. I can help you find one nearby if you share your location.", "doctors")
     return ("How can I help you today?", None)
 
 
@@ -245,7 +224,6 @@ async def chat(http_request: Request, request: ChatRequest, db: Session = Depend
     session.message_count = (session.message_count or 0) + 1
     db.commit()
 
-    recommended_action = _route_to_action(route)
     severity_medical = "M1"
     severity_psychological = "P0"
     doctor_specialty = result.get("doctor_specialty")
@@ -253,10 +231,6 @@ async def chat(http_request: Request, request: ChatRequest, db: Session = Depend
 
     if route == "medical":
         severity_medical, severity_psychological = calculate_severity([request.message])
-        if severity_medical == "M3":
-            recommended_action = "emergency"
-        elif severity_medical in ("M1", "M2"):
-            recommended_action = "doctor_handoff"
 
     msg, action = _user_message(
         request.message,
@@ -264,6 +238,15 @@ async def chat(http_request: Request, request: ChatRequest, db: Session = Depend
         doctor_specialty=doctor_specialty,
         doctor_suggestion_text=doctor_suggestion_text,
     )
+
+    if route == "medical":
+        try:
+            msg = run_medical_pipeline(request.message, severity_medical)
+            if action == "doctors" and "nearby" not in msg.lower():
+                msg = msg.rstrip() + " I can help you find a doctor nearby if you share your location."
+        except Exception as e:
+            logger.warning("Medical pipeline failed: %s", e)
+
     remaining = limit - session.message_count
     return ChatResponse(
         message=msg,
