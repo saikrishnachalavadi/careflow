@@ -11,13 +11,14 @@ from sqlalchemy.orm import Session
 
 from app.db.database import get_db
 from app.db.models import User, Session as SessionModel
-from app.schemas.chat import ChatRequest, ChatResponse
+from app.schemas.chat import BotChatRequest, BotChatResponse, ChatRequest, ChatResponse
 from app.core.router import route_input
 from app.core.severity import calculate_severity
 from app.core.auth_utils import get_current_user_from_request, get_message_limit_for_user
 from app.config import settings
 from app.api.triage import _get_or_create_session
 from app.services.medical_pipeline import run_medical_pipeline
+from app.services.bot_crew import run_bot
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -267,3 +268,11 @@ async def chat(http_request: Request, request: ChatRequest, db: Session = Depend
         session_id=session.id,
         remaining_prompts=remaining,
     )
+
+
+@router.post("/bot", response_model=BotChatResponse)
+async def chat_bot(request: BotChatRequest):
+    """Medical chat bot (CrewAI agent). Third LLM call."""
+    history = [{"role": m.role, "content": m.content} for m in (request.history or [])]
+    reply = run_bot(request.message, history=history)
+    return BotChatResponse(reply=reply)

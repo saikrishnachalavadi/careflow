@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import List, Optional
 
 
 class ChatRequest(BaseModel):
@@ -15,3 +15,17 @@ class ChatResponse(BaseModel):
     doctor_suggestion_text: Optional[str] = None  # LLM-generated short sentence suggesting which doctor type (when action is doctors)
     session_id: str
     remaining_prompts: Optional[int] = None  # set when applicable so UI can show "X messages left"
+
+
+class BotMessage(BaseModel):
+    role: str  # "user" | "assistant"
+    content: str
+
+
+class BotChatRequest(BaseModel):
+    message: str
+    history: Optional[List[BotMessage]] = None
+
+
+class BotChatResponse(BaseModel):
+    reply: str

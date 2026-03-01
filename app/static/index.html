@@ -211,6 +211,17 @@
     .popup-row .hours { font-size: 0.8rem; color: #0ea5e9; margin-top: 0.15rem; }
     .popup-row .distance { font-size: 0.8rem; color: #64748b; margin-top: 0.15rem; }
     .popup-row .vicinity { font-size: 0.85rem; color: #64748b; }
+    /* Bot popup */
+    .bot-popup .popup { max-width: 440px; }
+    .bot-popup .bot-chat { height: 320px; overflow-y: auto; padding: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; background: #f8fafc; }
+    .bot-popup .bot-msg { max-width: 90%; padding: 0.5rem 0.75rem; border-radius: 0.75rem; font-size: 0.9rem; line-height: 1.4; }
+    .bot-popup .bot-msg.user { align-self: flex-end; background: #2563eb; color: #fff; }
+    .bot-popup .bot-msg.bot { align-self: flex-start; background: #fff; border: 1px solid #e2e8f0; }
+    .bot-popup .bot-input-row { display: flex; gap: 0.5rem; padding: 0.75rem; border-top: 1px solid #e2e8f0; background: #fff; }
+    .bot-popup .bot-input-row textarea { flex: 1; min-height: 40px; max-height: 100px; padding: 0.5rem 0.75rem; border: 1px solid #cbd5e0; border-radius: 0.5rem; font-size: 0.95rem; font-family: inherit; resize: none; }
+    .bot-popup .bot-input-row button { padding: 0.5rem 1rem; background: #16213e; color: #fff; border: none; border-radius: 0.5rem; cursor: pointer; font-size: 0.9rem; }
+    .bot-popup .bot-input-row button:hover { background: #1e3a5f; }
+    .bot-popup .bot-input-row button:disabled { opacity: 0.6; cursor: not-allowed; }
   </style>
 </head>
 <body>
@@ -261,6 +272,17 @@
     </div>
   </div>
 
+  <div id="botPopup" class="popup-overlay bot-popup" aria-hidden="true">
+    <div class="popup">
+      <div class="popup-title">Medical bot <button type="button" class="popup-close" id="botPopupClose" aria-label="Close">&times;</button></div>
+      <div class="bot-chat" id="botChat"></div>
+      <div class="bot-input-row">
+        <textarea id="botInput" placeholder="Ask something health-related…" rows="1"></textarea>
+        <button type="button" id="botSend">Send</button>
+      </div>
+    </div>
+  </div>
+
   <header class="header">
     <div class="header-top">
       <div>
@@ -268,6 +290,7 @@
         <p class="sub">Healthcare navigation &amp; triage. Tell me what you need.</p>
       </div>
       <div class="auth-bar">
+        <button type="button" class="auth-btn" id="btnBot" title="Chat with medical bot">Medical bot</button>
         <span class="prompts-left" id="promptsLeft"></span>
         <div id="authLoggedOut">
           <button type="button" class="auth-btn" id="btnSignUp">Sign up</button>
@@ -461,6 +484,82 @@
         } catch (err) {
           errEl.textContent = 'Request failed. Try again.';
         }
+      };
+    })();
+
+    (function botPopup() {
+      var botPopupEl = document.getElementById('botPopup');
+      var botChatEl = document.getElementById('botChat');
+      var botInputEl = document.getElementById('botInput');
+      var botSendBtn = document.getElementById('botSend');
+      var botHistory = [];
+
+      function botAddMsg(content, isUser) {
+        var div = document.createElement('div');
+        div.className = 'bot-msg ' + (isUser ? 'user' : 'bot');
+        var safe = (function escape(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; })(content || '');
+        div.innerHTML = safe.replace(/\n/g, '<br>');
+        botChatEl.appendChild(div);
+        botChatEl.scrollTop = botChatEl.scrollHeight;
+      }
+
+      function botAddTyping() {
+        var div = document.createElement('div');
+        div.className = 'bot-msg bot';
+        div.id = 'botTyping';
+        div.textContent = 'Medical bot is thinking…';
+        botChatEl.appendChild(div);
+        botChatEl.scrollTop = botChatEl.scrollHeight;
+      }
+
+      function botRemoveTyping() {
+        var el = document.getElementById('botTyping');
+        if (el) el.remove();
+      }
+
+      function openBotPopup() {
+        botPopupEl.classList.add('show');
+        botPopupEl.setAttribute('aria-hidden', 'false');
+        if (botChatEl.children.length === 0) {
+          botAddMsg('Ask me anything health-related (educational only). For prescription advice and routing use the main chat.', false);
+        }
+        botInputEl.focus();
+      }
+
+      function closeBotPopup() {
+        botPopupEl.classList.remove('show');
+        botPopupEl.setAttribute('aria-hidden', 'true');
+      }
+
+      document.getElementById('btnBot').onclick = openBotPopup;
+      document.getElementById('botPopupClose').onclick = closeBotPopup;
+      botPopupEl.onclick = function(e) { if (e.target === botPopupEl) closeBotPopup(); };
+
+      botSendBtn.onclick = function() {
+        var text = (botInputEl.value || '').trim();
+        if (!text) return;
+        botInputEl.value = '';
+        botAddMsg(text, true);
+        botHistory.push({ role: 'user', content: text });
+        botAddTyping();
+        botSendBtn.disabled = true;
+        fetch('/chat/bot', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ message: text, history: botHistory.slice(0, -1) })
+        }).then(function(res) { return res.json().then(function(data) { return { res: res, data: data }; }); }).then(function(_) {
+          var reply = (_.data && _.data.reply) ? _.data.reply : 'Something went wrong. Try again.';
+          if (!_.res.ok) reply = 'Something went wrong. Try again.';
+          botRemoveTyping();
+          botAddMsg(reply, false);
+          botHistory.push({ role: 'assistant', content: reply });
+        }).catch(function() {
+          botRemoveTyping();
+          botAddMsg('Request failed. Try again.', false);
+        }).finally(function() {
+          botSendBtn.disabled = false;
+        });
       };
     })();
 
