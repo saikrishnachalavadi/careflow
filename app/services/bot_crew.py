@@ -15,6 +15,33 @@ _BOT_FALLBACK = (
 )
 
 
+def _set_span_token_usage(result: object) -> None:
+    """Set token usage on the current OpenTelemetry span so LangSmith can show Tokens/Cost for crewai.workflow runs."""
+    usage = getattr(result, "token_usage", None)
+    if not usage or (getattr(usage, "total_tokens", 0) == 0 and getattr(usage, "prompt_tokens", 0) == 0):
+        return
+    try:
+        from opentelemetry import trace
+        span = trace.get_current_span()
+        if not span or not span.is_recording():
+            return
+        prompt_tokens = getattr(usage, "prompt_tokens", 0) or 0
+        completion_tokens = getattr(usage, "completion_tokens", 0) or 0
+        total_tokens = getattr(usage, "total_tokens", 0) or (prompt_tokens + completion_tokens)
+        if total_tokens == 0:
+            return
+        # LangSmith / OpenLLMetry-style attributes so Tokens column can be populated
+        span.set_attribute("gen_ai.prompt.tokens", prompt_tokens)
+        span.set_attribute("gen_ai.completion.tokens", completion_tokens)
+        span.set_attribute("gen_ai.total.tokens", total_tokens)
+        # Alternate names some backends expect
+        span.set_attribute("llm.token_count.prompt", prompt_tokens)
+        span.set_attribute("llm.token_count.completion", completion_tokens)
+        span.set_attribute("langsmith.metadata.total_tokens", total_tokens)
+    except Exception as e:
+        logger.debug("Could not set span token usage: %s", e)
+
+
 def _build_conversation_context(history: List[dict], latest_message: str) -> str:
     """Build a single context string from chat history + latest user message."""
     parts = []
@@ -81,6 +108,10 @@ def run_bot(message: str, history: Optional[List[dict]] = None) -> str:
         )
         crew = Crew(agents=[medical_agent], tasks=[task], process=Process.sequential)
         result = crew.kickoff()
+
+        # Attach token usage to current OpenTelemetry span so LangSmith shows Tokens/Cost for crewai.workflow
+        _set_span_token_usage(result)
+
         if hasattr(result, "raw") and result.raw:
             return (result.raw or "").strip() or _BOT_FALLBACK
         if isinstance(result, str):

@@ -22,3 +22,4 @@ boto3>=1.34.0
 # Monitoring (LangSmith + CrewAI tracing)
 langsmith[otel]>=0.0.87
 opentelemetry-instrumentation-crewai>=0.39.0
+opentelemetry-instrumentation-google-genai>=0.6b0

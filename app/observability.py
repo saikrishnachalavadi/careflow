@@ -42,6 +42,15 @@ def setup_langsmith_crewai_tracing() -> None:
 
         tracer_provider.add_span_processor(OtelSpanProcessor())
         CrewAIInstrumentor().instrument(tracer_provider=tracer_provider)
+
+        # Instrument Google GenAI so Gemini API calls (used by CrewAI) report token usage to LangSmith
+        try:
+            from opentelemetry.instrumentation.google_genai import GoogleGenAiSdkInstrumentor
+            GoogleGenAiSdkInstrumentor().instrument()
+            logger.info("Google GenAI instrumentation enabled for token tracking")
+        except ImportError:
+            pass
+
         logger.info("LangSmith + CrewAI OpenTelemetry instrumentation enabled; project=%s", os.environ.get("LANGSMITH_PROJECT"))
     except Exception as e:
         logger.warning("Failed to enable CrewAI LangSmith tracing: %s", e)
