@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from fastapi import FastAPI, Request, HTTPException
@@ -5,6 +6,9 @@ from fastapi.responses import FileResponse, JSONResponse
 from app.api import triage, chat, emergency, doctors, pharmacy, labs, mental_health, auth
 from app.db.database import init_db
 from app.observability import setup_langsmith_crewai_tracing
+
+# Enable CrewAI tracing before any CrewAI import/run (avoids "Tracing has been disabled" on Render)
+os.environ["CREWAI_TRACING_ENABLED"] = "true"
 
 app = FastAPI(
     title="CareFlow",
