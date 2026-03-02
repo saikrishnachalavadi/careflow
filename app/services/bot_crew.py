@@ -106,7 +106,7 @@ def run_bot(message: str, history: Optional[List[dict]] = None) -> str:
             expected_output="A single concise, helpful reply (plain text).",
             agent=medical_agent,
         )
-        crew = Crew(agents=[medical_agent], tasks=[task], process=Process.sequential)
+        crew = Crew(agents=[medical_agent], tasks=[task], process=Process.sequential, tracing=True)
         result = crew.kickoff()
 
         # Attach token usage to current OpenTelemetry span so LangSmith shows Tokens/Cost for crewai.workflow

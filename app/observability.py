@@ -19,6 +19,9 @@ def setup_langsmith_crewai_tracing() -> None:
         logger.debug("LangSmith tracing disabled or no API key; skipping CrewAI instrumentation")
         return
 
+    # Enable CrewAI's own tracing so it collects execution traces (avoids "Tracing has been disabled" prompt/timeout)
+    os.environ["CREWAI_TRACING_ENABLED"] = "true"
+
     # LangSmith OTel exporter reads these env vars
     os.environ["LANGSMITH_API_KEY"] = settings.langchain_api_key
     os.environ["LANGSMITH_PROJECT"] = getattr(settings, "langchain_project", None) or "careflow"
