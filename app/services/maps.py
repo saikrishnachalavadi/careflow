@@ -327,67 +327,55 @@ def get_nearby_places(
     min_rating: Optional[float] = None,
 ) -> List[dict]:
     """
-    Get nearby places with optional open_now and rating filter.
-    At night (10 PM–7 AM), open_now_only is recommended for hospitals.
-    When open_now_only is True, we pass opennow=1 to the API so Google returns only
-    places that are open at query time (using Google Maps opening hours).
+    Get nearby places. No filters applied so list order and content match Google Maps.
+    open_now_only and min_rating are ignored (kept for API compatibility).
     """
+    # No filters: return exactly what Google Places API returns so our list matches Google Maps.
     raw = _fetch_nearby(
         lat, lon, keyword,
         type_filter=type_filter,
-        open_now=open_now_only,
+        open_now=False,
     )
-    if open_now_only:
-        raw = [p for p in raw if p.get("open_now") is True]
-    if min_rating is not None:
-        raw = [p for p in raw if (p.get("rating") or 0) >= min_rating]
-    # Keep Google Places API order (prominence); distance/duration order applied after Distance Matrix in callers.
     return raw
 
 
 def get_emergency_services(lat: float, lon: float) -> dict:
     """
-    Returns 112 number, nearby ambulances and hospitals with phone numbers when available.
-    At night, only return hospitals that are open (open_now).
+    Returns 112 number, nearby ambulances and hospitals. No filters; list matches Google Maps.
     """
-    is_night = _is_night()
-    ambulances = get_nearby_places(
-        lat, lon, "ambulance", open_now_only=False, min_rating=3.0
-    )
+    ambulances = get_nearby_places(lat, lon, "ambulance")
     hospitals = get_nearby_places(
         lat, lon, "hospital emergency",
         type_filter="hospital",
-        open_now_only=is_night,
-        min_rating=3.0,
     )
 
-    def add_phones(places: List[dict], only_with_phone: bool = True, origin_lat: Optional[float] = None, origin_lon: Optional[float] = None) -> List[dict]:
+    def add_details(places: List[dict], origin_lat: Optional[float] = None, origin_lon: Optional[float] = None) -> List[dict]:
         out = []
-        for p in places[:15]:
+        for p in places[:20]:
             row = dict(p)
             if p.get("place_id"):
                 details = _get_place_contact_and_hours(p["place_id"])
                 if details:
                     row["phone"] = details.get("phone")
                     row["opening_hours_text"] = details.get("opening_hours_text")
+                    row["open_now"] = details.get("open_now")
                 else:
                     row["phone"] = None
                     row["opening_hours_text"] = None
+                    row["open_now"] = None
             else:
                 row["phone"] = None
                 row["opening_hours_text"] = None
-            if only_with_phone and not (row.get("phone") or "").strip():
-                continue
+                row["open_now"] = None
             out.append(row)
         if origin_lat is not None and origin_lon is not None and out:
             _add_distances_via_matrix(out, origin_lat, origin_lon)
         return out
 
-    # Preserve Google's list order so when Google Maps ranking updates, our list matches.
     return {
         "emergency_number": "112",
-        "ambulances": add_phones(ambulances, origin_lat=lat, origin_lon=lon),
-        "hospitals": add_phones(hospitals, origin_lat=lat, origin_lon=lon),
+        "ambulances": add_details(ambulances, origin_lat=lat, origin_lon=lon),
+        "hospitals": add_details(hospitals, origin_lat=lat, origin_lon=lon),
     }
 
 
@@ -482,17 +470,14 @@ def get_nearby_doctors(
     lon: float,
     specialty: Optional[str] = None,
 ) -> List[dict]:
-    """Smart doctor/hospital routing. At night, prefer 24/7 (open_now)."""
+    """Nearby doctors; list matches Google Maps (no filters)."""
     keyword = _doctor_places_keyword(specialty)
     return get_nearby_places(
         lat, lon, keyword,
         type_filter="doctor",
-        open_now_only=_is_night(),
-        min_rating=3.0,
     )[:50]
 
 
-MIN_DOCTORS_IN_POPUP = 10
 MAX_DOCTORS_POOL = 50
 LOAD_MORE_PAGE_SIZE = 10
 
@@ -504,13 +489,9 @@ def get_doctors_with_phones(
     skip: int = 0,
     limit: int = LOAD_MORE_PAGE_SIZE,
 ) -> tuple:
-    """Nearby doctors for handoff popup. Returns (list_slice, has_more).
-    Builds a pool (with_phone first, then no_phone to reach MIN_DOCTORS_IN_POPUP, cap at MAX_DOCTORS_POOL),
-    then returns pool[skip:skip+limit]. has_more = (len(pool) > skip + limit).
-    """
+    """Nearby doctors for handoff popup. Returns (list_slice, has_more). No filters; list matches Google Maps."""
     raw = get_nearby_doctors(lat, lon, specialty=specialty)
-    with_phone: List[dict] = []
-    no_phone: List[dict] = []
+    pool: List[dict] = []
     for p in raw:
         row = dict(p)
         if p.get("place_id"):
@@ -527,85 +508,75 @@ def get_doctors_with_phones(
             row["phone"] = None
             row["opening_hours_text"] = None
             row["open_now"] = None
-        if (row.get("phone") or "").strip():
-            with_phone.append(row)
-        else:
-            no_phone.append(row)
-    _add_distances_via_matrix(with_phone, lat, lon)
-    _add_distances_via_matrix(no_phone, lat, lon)
-    # Keep Google Places API order so when Google Maps updates ranking, our list matches.
-    pool: List[dict] = list(with_phone)
-    while len(pool) < MIN_DOCTORS_IN_POPUP and no_phone:
-        pool.append(no_phone.pop(0))
+        pool.append(row)
+    _add_distances_via_matrix(pool, lat, lon)
     pool = pool[:MAX_DOCTORS_POOL]
     slice_end = min(skip + limit, len(pool))
     return pool[skip:slice_end], (len(pool) > skip + limit)
 
 
 def get_nearby_pharmacies(lat: float, lon: float) -> List[dict]:
-    """Nearby pharmacies."""
+    """Nearby pharmacies; list matches Google Maps (no filters)."""
     return get_nearby_places(
         lat, lon, "pharmacy",
         type_filter="pharmacy",
-        open_now_only=False,
-        min_rating=3.0,
-    )[:15]
+    )[:20]
 
 
 def get_pharmacies_with_phones(lat: float, lon: float) -> List[dict]:
-    """Nearby pharmacies with phone numbers only (for handoff popup)."""
+    """Nearby pharmacies for handoff popup. No filters; list matches Google Maps."""
     raw = get_nearby_pharmacies(lat, lon)
     out = []
-    for p in raw[:15]:
+    for p in raw:
         row = dict(p)
         if p.get("place_id"):
             details = _get_place_contact_and_hours(p["place_id"])
             if details:
                 row["phone"] = details.get("phone")
                 row["opening_hours_text"] = details.get("opening_hours_text")
+                row["open_now"] = details.get("open_now")
             else:
                 row["phone"] = None
                 row["opening_hours_text"] = None
+                row["open_now"] = None
         else:
             row["phone"] = None
             row["opening_hours_text"] = None
-        if (row.get("phone") or "").strip():
-            out.append(row)
+            row["open_now"] = None
+        out.append(row)
     _add_distances_via_matrix(out, lat, lon)
-    # Keep Google's list order so when Google Maps updates, our list matches.
     return out
 
 
 def get_nearby_labs(lat: float, lon: float) -> List[dict]:
-    """Nearby diagnostic/lab centers. At night, open only."""
+    """Nearby diagnostic/lab centers; list matches Google Maps (no filters)."""
     return get_nearby_places(
         lat, lon, "diagnostic lab pathology",
-        open_now_only=_is_night(),
-        min_rating=3.0,
-    )[:15]
+    )[:20]
 
 
 def get_labs_with_phones(lat: float, lon: float) -> List[dict]:
-    """Nearby labs with phone numbers only (for handoff popup)."""
+    """Nearby labs for handoff popup. No filters; list matches Google Maps."""
     raw = get_nearby_labs(lat, lon)
     out = []
-    for p in raw[:15]:
+    for p in raw:
         row = dict(p)
         if p.get("place_id"):
             details = _get_place_contact_and_hours(p["place_id"])
             if details:
                 row["phone"] = details.get("phone")
                 row["opening_hours_text"] = details.get("opening_hours_text")
+                row["open_now"] = details.get("open_now")
             else:
                 row["phone"] = None
                 row["opening_hours_text"] = None
+                row["open_now"] = None
         else:
             row["phone"] = None
             row["opening_hours_text"] = None
-        if (row.get("phone") or "").strip():
-            out.append(row)
+            row["open_now"] = None
+        out.append(row)
     _add_distances_via_matrix(out, lat, lon)
-    # Keep Google's list order so when Google Maps updates, our list matches.
     return out
 
 
@@ -619,7 +590,7 @@ MENTAL_HEALTH_SPECIALTY_KEYWORDS = {
 
 
 def get_nearby_mental_health(lat: float, lon: float, specialty: Optional[str] = None) -> List[dict]:
-    """Nearby mental health professionals (psychologist, psychiatrist, counselor)."""
+    """Nearby mental health professionals; list matches Google Maps (no filters)."""
     if specialty and specialty.strip().lower() in MENTAL_HEALTH_SPECIALTY_KEYWORDS:
         keyword = MENTAL_HEALTH_SPECIALTY_KEYWORDS[specialty.strip().lower()]
     else:
@@ -627,30 +598,29 @@ def get_nearby_mental_health(lat: float, lon: float, specialty: Optional[str] = 
     return get_nearby_places(
         lat, lon, keyword,
         type_filter=None,
-        open_now_only=False,
-        min_rating=3.0,
-    )[:15]
+    )[:20]
 
 
 def get_mental_health_with_phones(lat: float, lon: float, specialty: Optional[str] = None) -> List[dict]:
-    """Nearby mental health professionals with phone numbers only (for handoff popup)."""
+    """Nearby mental health professionals for handoff popup. No filters; list matches Google Maps."""
     raw = get_nearby_mental_health(lat, lon, specialty=specialty)
     out = []
-    for p in raw[:15]:
+    for p in raw:
         row = dict(p)
         if p.get("place_id"):
             details = _get_place_contact_and_hours(p["place_id"])
             if details:
                 row["phone"] = details.get("phone")
                 row["opening_hours_text"] = details.get("opening_hours_text")
+                row["open_now"] = details.get("open_now")
             else:
                 row["phone"] = None
                 row["opening_hours_text"] = None
+                row["open_now"] = None
         else:
             row["phone"] = None
             row["opening_hours_text"] = None
-        if (row.get("phone") or "").strip():
-            out.append(row)
+            row["open_now"] = None
+        out.append(row)
     _add_distances_via_matrix(out, lat, lon)
-    # Keep Google's list order so when Google Maps updates, our list matches.
     return out
