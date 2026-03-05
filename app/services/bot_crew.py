@@ -1,45 +1,33 @@
 """
-Medical chat bot using CrewAI agents. Third LLM call in the app (router, medical pipeline, bot).
+Medical chat bot using LangGraph + Gemini. Third LLM call in the app (router, medical pipeline, bot).
+Uses same LangChain/LangSmith tracing as call 1 and call 2.
 """
 import logging
 from typing import List, Optional
+from typing_extensions import TypedDict
+
+from langgraph.graph import StateGraph, END
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.messages import SystemMessage, HumanMessage
 
 from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Fallback when CrewAI or Gemini is unavailable
+# Fallback when Gemini is unavailable
 _BOT_FALLBACK = (
     "I can only help with general health information. "
     "For prescription advice and routing use the main chat."
 )
 
+MEDICAL_BOT_SYSTEM = """You are CareFlow's medical bot. Answer medical and health questions helpfully: explain conditions, suggest common OTC options where appropriate, and give practical guidance.
 
-def _set_span_token_usage(result: object) -> None:
-    """Set token usage on the current OpenTelemetry span so LangSmith can show Tokens/Cost for crewai.workflow runs."""
-    usage = getattr(result, "token_usage", None)
-    if not usage or (getattr(usage, "total_tokens", 0) == 0 and getattr(usage, "prompt_tokens", 0) == 0):
-        return
-    try:
-        from opentelemetry import trace
-        span = trace.get_current_span()
-        if not span or not span.is_recording():
-            return
-        prompt_tokens = getattr(usage, "prompt_tokens", 0) or 0
-        completion_tokens = getattr(usage, "completion_tokens", 0) or 0
-        total_tokens = getattr(usage, "total_tokens", 0) or (prompt_tokens + completion_tokens)
-        if total_tokens == 0:
-            return
-        # LangSmith / OpenLLMetry-style attributes so Tokens column can be populated
-        span.set_attribute("gen_ai.prompt.tokens", prompt_tokens)
-        span.set_attribute("gen_ai.completion.tokens", completion_tokens)
-        span.set_attribute("gen_ai.total.tokens", total_tokens)
-        # Alternate names some backends expect
-        span.set_attribute("llm.token_count.prompt", prompt_tokens)
-        span.set_attribute("llm.token_count.completion", completion_tokens)
-        span.set_attribute("langsmith.metadata.total_tokens", total_tokens)
-    except Exception as e:
-        logger.debug("Could not set span token usage: %s", e)
+Rules:
+- Respond only to medical/health topics; for non-medical questions, politely say you only answer medical questions.
+- You may suggest common over-the-counter options (e.g. acetaminophen for fever, throat lozenges for sore throat) and when to see a doctor.
+- Do not prescribe prescription drugs.
+- Keep replies concise (under 150 words when possible).
+- Reply with a single concise, helpful plain-text response."""
 
 
 def _build_conversation_context(history: List[dict], latest_message: str) -> str:
@@ -58,10 +46,53 @@ def _build_conversation_context(history: List[dict], latest_message: str) -> str
     return latest_message
 
 
+# ─── LangGraph state and node ────────────────────────────────────
+
+class BotState(TypedDict):
+    context: str
+    reply: Optional[str]
+
+
+def medical_reply_node(state: BotState) -> BotState:
+    """Single node: call Gemini with conversation context, return reply."""
+    llm = ChatGoogleGenerativeAI(
+        model="gemini-2.5-flash",
+        google_api_key=settings.google_api_key,
+        temperature=0.4,
+    )
+    messages = [
+        SystemMessage(content=MEDICAL_BOT_SYSTEM),
+        HumanMessage(content=state["context"]),
+    ]
+    response = llm.invoke(messages)
+    reply = (response.content or "").strip()
+    return {**state, "reply": reply or _BOT_FALLBACK}
+
+
+def _build_bot_graph():
+    """Build and compile the medical bot graph (single node)."""
+    graph = StateGraph(BotState)
+    graph.add_node("reply", medical_reply_node)
+    graph.set_entry_point("reply")
+    graph.add_edge("reply", END)
+    return graph.compile()
+
+
+_bot_graph = None
+
+
+def _get_bot_graph():
+    """Lazy-compile the graph once."""
+    global _bot_graph
+    if _bot_graph is None:
+        _bot_graph = _build_bot_graph()
+    return _bot_graph
+
+
 def run_bot(message: str, history: Optional[List[dict]] = None) -> str:
     """
-    Run the CrewAI medical assistant agent on the user's message (with optional history).
-    Returns the assistant's reply. This is the third LLM call (router, medical pipeline, bot).
+    Run the medical assistant on the user's message (with optional history).
+    Returns the assistant's reply. Uses LangGraph + Gemini; traces to LangSmith like router and pipeline.
     """
     if not (message or "").strip():
         return "Please type a health-related question or topic."
@@ -69,56 +100,13 @@ def run_bot(message: str, history: Optional[List[dict]] = None) -> str:
         logger.warning("Bot: no Google API key configured")
         return _BOT_FALLBACK
 
-    try:
-        from crewai import Agent, Crew, LLM, Process, Task
-    except ImportError as e:
-        logger.warning("Bot: CrewAI not available: %s", e)
-        return _BOT_FALLBACK
-
     context = _build_conversation_context(history or [], message.strip())
 
     try:
-        llm = LLM(
-            model="gemini-2.5-flash",
-            api_key=settings.google_api_key,
-            temperature=0.4,
-        )
-        medical_agent = Agent(
-            role="Medical assistant",
-            goal="Answer medical and health questions helpfully: explain conditions, suggest common OTC options where appropriate, and give practical guidance. Only restriction: respond only to medical/health topics; decline non-medical questions.",
-            backstory=(
-                "You are CareFlow's medical bot. You give clear, useful health information. You may suggest "
-                "common over-the-counter options (e.g. acetaminophen for fever, throat lozenges for sore throat) "
-                "and when to see a doctor. Do not prescribe prescription drugs. If the user asks something "
-                "not related to health or medicine, politely say you only answer medical questions. Keep replies "
-                "concise (under 150 words when possible)."
-            ),
-            llm=llm,
-            verbose=False,
-        )
-        task = Task(
-            description=(
-                "Reply to the user's latest message. You may recommend common OTC options and give practical "
-                "health advice. Do not prescribe prescription medicines. If the question is not about health or "
-                "medicine, say you only answer medical questions. Otherwise be helpful and concise.\n\n"
-                "Conversation:\n" + context
-            ),
-            expected_output="A single concise, helpful reply (plain text).",
-            agent=medical_agent,
-        )
-        crew = Crew(agents=[medical_agent], tasks=[task], process=Process.sequential, tracing=True)
-        result = crew.kickoff()
-
-        # Attach token usage to current OpenTelemetry span so LangSmith shows Tokens/Cost for crewai.workflow
-        _set_span_token_usage(result)
-
-        if hasattr(result, "raw") and result.raw:
-            return (result.raw or "").strip() or _BOT_FALLBACK
-        if isinstance(result, str):
-            return result.strip() or _BOT_FALLBACK
-        # CrewOutput or similar
-        out = getattr(result, "raw", None) or str(result)
-        return (out or "").strip() or _BOT_FALLBACK
+        graph = _get_bot_graph()
+        result = graph.invoke({"context": context, "reply": None})
+        reply = result.get("reply") or _BOT_FALLBACK
+        return reply.strip() or _BOT_FALLBACK
     except Exception as e:
-        logger.exception("Bot crew failed: %s", e)
+        logger.exception("Bot failed: %s", e)
         return _BOT_FALLBACK

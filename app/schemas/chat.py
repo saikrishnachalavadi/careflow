@@ -15,6 +15,7 @@ class ChatResponse(BaseModel):
     doctor_suggestion_text: Optional[str] = None  # LLM-generated short sentence suggesting which doctor type (when action is doctors)
     session_id: str
     remaining_prompts: Optional[int] = None  # set when applicable so UI can show "X messages left"
+    suggest_medical_bot: Optional[bool] = None  # when True, show "For conversation use medical bot" + Medical bot button
 
 
 class BotMessage(BaseModel):

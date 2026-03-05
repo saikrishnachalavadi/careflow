@@ -534,6 +534,7 @@
       document.getElementById('btnBot').onclick = openBotPopup;
       document.getElementById('botPopupClose').onclick = closeBotPopup;
       botPopupEl.onclick = function(e) { if (e.target === botPopupEl) closeBotPopup(); };
+      window.openBotPopup = openBotPopup;
 
       botSendBtn.onclick = function() {
         var text = (botInputEl.value || '').trim();
@@ -1566,6 +1567,10 @@
     });
 
     async function handleAction(action, afterEl) {
+      if (action === 'open_medical_bot') {
+        if (window.openBotPopup) window.openBotPopup();
+        return;
+      }
       if (action === 'emergency_services') {
         openEmergencyPopup();
         return;
@@ -1714,10 +1719,12 @@
           labs: 'Find labs (nearby or book at home)',
           crisis_helplines: 'Show crisis helpline numbers',
           psychological: 'Find mental health support (nearby or helplines)',
+          open_medical_bot: 'Medical bot',
         };
-        const actionLabel = data.action ? (actionLabels[data.action] || 'Share location') : null;
+        const useBotAction = data.suggest_medical_bot ? 'open_medical_bot' : (data.action || null);
+        const actionLabel = useBotAction ? (actionLabels[useBotAction] || 'Share location') : null;
         const actionMeta = (data.action === 'doctors' && data.doctor_specialty) ? { doctor_specialty: data.doctor_specialty } : undefined;
-        addMsg(renderMessage(data.message), false, data.action || null, actionLabel, actionMeta);
+        addMsg(renderMessage(data.message), false, useBotAction, actionLabel, actionMeta);
       } catch (err) {
         removeTyping();
         const errDiv = addMsg('Request failed: ' + err.message, false);
