@@ -670,5 +670,8 @@ async def route_input(
         "response_message": None,
     }
 
-    result = router_graph.invoke(initial_state)
+    result = router_graph.invoke(
+        initial_state,
+        config={"run_name": "CareFlow Router"},
+    )
     return result

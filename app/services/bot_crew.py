@@ -104,7 +104,10 @@ def run_bot(message: str, history: Optional[List[dict]] = None) -> str:
 
     try:
         graph = _get_bot_graph()
-        result = graph.invoke({"context": context, "reply": None})
+        result = graph.invoke(
+            {"context": context, "reply": None},
+            config={"run_name": "CareFlow Medical Bot"},
+        )
         reply = result.get("reply") or _BOT_FALLBACK
         return reply.strip() or _BOT_FALLBACK
     except Exception as e:
