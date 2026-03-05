@@ -240,7 +240,7 @@ async def chat(http_request: Request, request: ChatRequest, db: Session = Depend
 
     if route == "medical":
         try:
-            msg, severity_medical, suggest_medical_bot = run_medical_pipeline(request.message)
+            msg, severity_medical = run_medical_pipeline(request.message)
             severity_psychological = "P0"
         except Exception as e:
             logger.warning("Medical pipeline failed: %s", e)
@@ -250,15 +250,12 @@ async def chat(http_request: Request, request: ChatRequest, db: Session = Depend
                 doctor_specialty=doctor_specialty, doctor_suggestion_text=doctor_suggestion_text,
             )
         else:
-            if suggest_medical_bot:
-                msg = "For conversation use medical bot."
-            else:
-                if "nearby" not in msg.lower():
-                    msg = msg.rstrip() + " I can help you find a doctor nearby if you share your location."
-                _, action = _user_message(
-                    request.message, route, severity_medical, severity_psychological, block_reason,
-                    doctor_specialty=doctor_specialty, doctor_suggestion_text=doctor_suggestion_text,
-                )
+            if "nearby" not in msg.lower():
+                msg = msg.rstrip() + " I can help you find a doctor nearby if you share your location."
+            _, action = _user_message(
+                request.message, route, severity_medical, severity_psychological, block_reason,
+                doctor_specialty=doctor_specialty, doctor_suggestion_text=doctor_suggestion_text,
+            )
     else:
         msg, action = _user_message(
             request.message, route, "M1", "P0", block_reason,
