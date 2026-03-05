@@ -31,7 +31,7 @@ The router has already classified this as medical.
 Reply format: Line 1 = one severity code only (M0, M1, M2, or M3). Line 2 and below use ONLY these three headings:
 Possible causes: (one brief line)
 Non prescriptive: (when relevant: common non-prescription OTC options and "follow the label"; omit if not relevant)
-When to see a doctor: (one short sentence)
+When to see a doctor: (one short sentence; include which type of doctor or specialist when relevant, e.g. general physician, dermatologist, pediatrician, ENT)
 Max 120 words total after the headings. You may suggest common OTC options. Do not suggest prescription drugs."""
 
     user = f"User message: {symptoms}\n\nYour reply (line 1 = M0/M1/M2/M3 then only the 3 headings above):"
