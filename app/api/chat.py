@@ -223,8 +223,9 @@ async def chat(http_request: Request, request: ChatRequest, db: Session = Depend
         session.message_count = (session.message_count or 0) + 1
         db.commit()
         msg = await _generate_unclear_reply(request.message)
+        msg = (msg or "").rstrip() + " - for conversation use medical bot."
         remaining = limit - session.message_count
-        return ChatResponse(message=msg, action=None, doctor_specialty=None, session_id=session.id, remaining_prompts=remaining)
+        return ChatResponse(message=msg, action=None, doctor_specialty=None, session_id=session.id, remaining_prompts=remaining, suggest_medical_bot=True)
 
     session.last_activity = datetime.utcnow()
     session.message_count = (session.message_count or 0) + 1
