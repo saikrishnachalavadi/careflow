@@ -675,6 +675,15 @@
     }
 
     function distanceHtml(p) {
+      // Prefer Google's distance_text and duration_text when present (same as Google Maps)
+      var distText = (p.distance_text || '').trim();
+      var durText = (p.duration_text || '').trim();
+      if (distText && durText) {
+        return '<div class="distance">' + escapeHtml(distText) + ' · ' + escapeHtml(durText) + '</div>';
+      }
+      if (distText) {
+        return '<div class="distance">' + escapeHtml(distText) + '</div>';
+      }
       var d = p.distance_km;
       if (d == null || d === '') return '';
       var text = formatDistance(typeof d === 'number' ? d : parseFloat(d));

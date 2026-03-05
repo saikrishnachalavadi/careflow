@@ -1,7 +1,8 @@
 """
 Google Places API client for CareFlow.
 Used for: emergency services, doctors, pharmacies, labs.
-Filtering and ranking done in-app (medical keywords, open-now, rating).
+List order is preserved from Google (no re-sorting) so when Google Maps updates
+ranking or data, our lists stay in sync. Distance/duration from Distance Matrix API.
 """
 import logging
 from typing import Dict, List, Optional
@@ -122,7 +123,7 @@ def _fetch_distance_matrix_batch(
 ) -> List[Optional[dict]]:
     """
     Call Google Distance Matrix API for one origin and multiple destinations.
-    Returns list of {distance_km, distance_text} or None for each destination.
+    Returns list of {distance_km, distance_text, duration_s, duration_text} or None for each destination.
     """
     if not settings.google_maps_api_key or not dest_lat_lng:
         return [None] * len(dest_lat_lng)
@@ -154,10 +155,17 @@ def _fetch_distance_matrix_batch(
             out.append(None)
             continue
         dist = el.get("distance") or {}
+        dur = el.get("duration") or {}
         val_m = dist.get("value")
-        text = dist.get("text", "")
+        dist_text = dist.get("text", "")
+        dur_text = dur.get("text", "")
         if val_m is not None:
-            out.append({"distance_km": round(float(val_m) / 1000, 1), "distance_text": text or None})
+            out.append({
+                "distance_km": round(float(val_m) / 1000, 1),
+                "distance_text": dist_text or None,
+                "duration_s": dur.get("value"),
+                "duration_text": dur_text or None,
+            })
         else:
             out.append(None)
     return out
@@ -193,6 +201,10 @@ def _add_distances_via_matrix(
                 places[idx]["distance_km"] = res["distance_km"]
                 if res.get("distance_text"):
                     places[idx]["distance_text"] = res["distance_text"]
+                if res.get("duration_text"):
+                    places[idx]["duration_text"] = res["duration_text"]
+                if res.get("duration_s") is not None:
+                    places[idx]["duration_s"] = res["duration_s"]
             else:
                 places[idx]["distance_km"] = _haversine_km(
                     origin_lat, origin_lon,
@@ -329,8 +341,7 @@ def get_nearby_places(
         raw = [p for p in raw if p.get("open_now") is True]
     if min_rating is not None:
         raw = [p for p in raw if (p.get("rating") or 0) >= min_rating]
-    # Sort by rating desc, then by name
-    raw.sort(key=lambda p: (-(p.get("rating") or 0), p.get("name", "")))
+    # Keep Google Places API order (prominence); distance/duration order applied after Distance Matrix in callers.
     return raw
 
 
@@ -372,10 +383,11 @@ def get_emergency_services(lat: float, lon: float) -> dict:
             _add_distances_via_matrix(out, origin_lat, origin_lon)
         return out
 
+    # Preserve Google's list order so when Google Maps ranking updates, our list matches.
     return {
         "emergency_number": "112",
-        "ambulances": _sort_by_distance(add_phones(ambulances, origin_lat=lat, origin_lon=lon)),
-        "hospitals": _sort_by_distance(add_phones(hospitals, origin_lat=lat, origin_lon=lon)),
+        "ambulances": add_phones(ambulances, origin_lat=lat, origin_lon=lon),
+        "hospitals": add_phones(hospitals, origin_lat=lat, origin_lon=lon),
     }
 
 
@@ -521,8 +533,7 @@ def get_doctors_with_phones(
             no_phone.append(row)
     _add_distances_via_matrix(with_phone, lat, lon)
     _add_distances_via_matrix(no_phone, lat, lon)
-    with_phone = _sort_doctors_by_specialty_and_distance(with_phone, specialty)
-    no_phone = _sort_doctors_by_specialty_and_distance(no_phone, specialty)
+    # Keep Google Places API order so when Google Maps updates ranking, our list matches.
     pool: List[dict] = list(with_phone)
     while len(pool) < MIN_DOCTORS_IN_POPUP and no_phone:
         pool.append(no_phone.pop(0))
@@ -561,7 +572,8 @@ def get_pharmacies_with_phones(lat: float, lon: float) -> List[dict]:
         if (row.get("phone") or "").strip():
             out.append(row)
     _add_distances_via_matrix(out, lat, lon)
-    return _sort_by_distance(out)
+    # Keep Google's list order so when Google Maps updates, our list matches.
+    return out
 
 
 def get_nearby_labs(lat: float, lon: float) -> List[dict]:
@@ -593,7 +605,8 @@ def get_labs_with_phones(lat: float, lon: float) -> List[dict]:
         if (row.get("phone") or "").strip():
             out.append(row)
     _add_distances_via_matrix(out, lat, lon)
-    return _sort_by_distance(out)
+    # Keep Google's list order so when Google Maps updates, our list matches.
+    return out
 
 
 # Mental health: psychologist, psychiatrist, counselor (for Places keyword)
@@ -639,4 +652,5 @@ def get_mental_health_with_phones(lat: float, lon: float, specialty: Optional[st
         if (row.get("phone") or "").strip():
             out.append(row)
     _add_distances_via_matrix(out, lat, lon)
-    return _sort_by_distance(out)
+    # Keep Google's list order so when Google Maps updates, our list matches.
+    return out
