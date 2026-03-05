@@ -64,7 +64,10 @@ def medical_reply_node(state: BotState) -> BotState:
         SystemMessage(content=MEDICAL_BOT_SYSTEM),
         HumanMessage(content=state["context"]),
     ]
-    response = llm.invoke(messages)
+    response = llm.invoke(
+        messages,
+        config={"run_name": "Medical Bot - Reply"},
+    )
     reply = (response.content or "").strip()
     return {**state, "reply": reply or _BOT_FALLBACK}
 
@@ -106,7 +109,7 @@ def run_bot(message: str, history: Optional[List[dict]] = None) -> str:
         graph = _get_bot_graph()
         result = graph.invoke(
             {"context": context, "reply": None},
-            config={"run_name": "CareFlow Medical Bot"},
+            config={"run_name": "Medical Bot"},
         )
         reply = result.get("reply") or _BOT_FALLBACK
         return reply.strip() or _BOT_FALLBACK

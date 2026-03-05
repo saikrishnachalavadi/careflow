@@ -61,7 +61,10 @@ async def _generate_unclear_reply(user_message: str) -> str:
         )
         prompt = SystemMessage(content="""You are CareFlow, a healthcare-only assistant. The user said something that is not clearly about health.
 Reply in ONE short sentence (max 15 words). Politely say you only help with health topics and ask them to share a symptom or what they need (e.g. doctor, pharmacy, lab). Do NOT recommend a doctor. Be friendly and brief.""")
-        resp = llm.invoke([prompt, HumanMessage(content=user_message)])
+        resp = llm.invoke(
+            [prompt, HumanMessage(content=user_message)],
+            config={"run_name": "Unclear Reply"},
+        )
         text = (resp.content or "").strip()
         if text and len(text) < 200:
             return text

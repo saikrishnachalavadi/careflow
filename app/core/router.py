@@ -532,7 +532,10 @@ Line 1: EMERGENCY or MEDICAL or UNCLEAR
 Line 2 (only if MEDICAL): your short suggestion sentence""")
 
     user_msg = HumanMessage(content=state["message"])
-    response = llm.invoke([classification_prompt, user_msg])
+    response = llm.invoke(
+        [classification_prompt, user_msg],
+        config={"run_name": "Router - Classify"},
+    )
     raw = (response.content or "").strip()
     lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
     classification = (lines[0].upper() if lines else "MEDICAL")
@@ -672,6 +675,6 @@ async def route_input(
 
     result = router_graph.invoke(
         initial_state,
-        config={"run_name": "CareFlow Router"},
+        config={"run_name": "Router"},
     )
     return result

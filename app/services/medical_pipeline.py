@@ -41,7 +41,7 @@ Max 120 words total after the headings. You may suggest common OTC options. Do n
         llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=settings.google_api_key)
         r = llm.invoke(
             [SystemMessage(content=sys), HumanMessage(content=user)],
-            config={"run_name": "CareFlow Medical Pipeline"},
+            config={"run_name": "Medical Pipeline"},
         )
         raw = (r.content or "").strip()
         severity = _parse_severity(raw)
