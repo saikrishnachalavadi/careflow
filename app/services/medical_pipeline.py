@@ -29,7 +29,7 @@ def _severity_and_reply(symptoms: str) -> tuple[str, str]:
 The router has already classified this as medical.
 
 Reply format: Line 1 = one severity code only (M0, M1, M2, or M3). Line 2 and below use ONLY these three headings:
-Possible causes: (1-3 short items)
+Possible causes: (one brief line)
 Non prescriptive: (when relevant: common non-prescription OTC options and "follow the label"; omit if not relevant)
 When to see a doctor: (one short sentence)
 Max 120 words total after the headings. You may suggest common OTC options. Do not suggest prescription drugs."""
