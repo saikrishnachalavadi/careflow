@@ -5,7 +5,7 @@ List order is preserved from Google (no re-sorting) so when Google Maps updates
 ranking or data, our lists stay in sync. Distance/duration from Distance Matrix API.
 """
 import logging
-from typing import Dict, List, Optional
+from typing import List, Optional
 from datetime import datetime
 
 import httpx
@@ -81,39 +81,16 @@ def _geocode_retry(query: str, region: str) -> Optional[tuple]:
         return None
 
 
-def _is_night() -> bool:
-    """True between 10 PM and 7 AM (night-time routing)."""
-    hour = datetime.utcnow().hour
-    return hour >= 22 or hour < 7
-
-
 def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Distance in km between two points (WGS84)."""
+    """Distance in km between two points (WGS84). Used as fallback when Distance Matrix fails."""
     import math as _math
-    R = 6371  # Earth radius in km
+    R = 6371
     phi1, phi2 = _math.radians(lat1), _math.radians(lat2)
     dphi = _math.radians(lat2 - lat1)
     dlam = _math.radians(lon2 - lon1)
     a = _math.sin(dphi / 2) ** 2 + _math.cos(phi1) * _math.cos(phi2) * _math.sin(dlam / 2) ** 2
     c = 2 * _math.atan2(_math.sqrt(a), _math.sqrt(1 - a))
     return round(R * c, 1)
-
-
-def _sort_by_distance(places: List[dict]) -> List[dict]:
-    """Sort by distance_km ascending (nearest first). Entries without distance_km go last."""
-    return sorted(places, key=lambda p: (p.get("distance_km") is None, p.get("distance_km") if p.get("distance_km") is not None else 0.0))
-
-
-def _add_distance(place: dict, origin_lat: float, origin_lon: float) -> None:
-    """Add distance_km to place in-place (haversine fallback when Matrix API not used)."""
-    geo = place.get("geometry") or {}
-    loc = geo.get("location") or {}
-    lat = loc.get("lat")
-    lng = loc.get("lng")
-    if lat is not None and lng is not None:
-        place["distance_km"] = _haversine_km(origin_lat, origin_lon, float(lat), float(lng))
-    else:
-        place["distance_km"] = None
 
 
 def _fetch_distance_matrix_batch(
@@ -403,30 +380,6 @@ DOCTOR_SPECIALTY_KEYWORDS = {
     "endocrinologist": "endocrinologist",
 }
 
-# Keywords to match in place name for specialty priority (name containing these → list first).
-# Used to boost e.g. "Pediatric Clinic" when user asked for pediatrician.
-DOCTOR_SPECIALTY_NAME_KEYWORDS: Dict[str, List[str]] = {
-    "pediatrician": ["pediatric", "pediatrician", "children", "kids", "child"],
-    "general_physician": ["general", "family", "gp", "primary care"],
-    "dermatologist": ["dermatolog", "skin"],
-    "cardiologist": ["cardio", "heart"],
-    "gynecologist": ["gynecolog", "obstetric", "women", "maternity"],
-    "orthopedic": ["orthopedic", "orthopaedic", "bone", "sport"],
-    "psychiatrist": ["psychiatr", "mental health"],
-    "neurologist": ["neuro"],
-    "dentist": ["dental", "dentist", "teeth"],
-    "ophthalmologist": ["ophthalmolog", "eye", "vision"],
-    "ent": ["ent", "ear nose throat", "otolaryngolog"],
-    "gastroenterologist": ["gastro", "digestive"],
-    "pulmonologist": ["pulmonolog", "lung", "respiratory"],
-    "nephrologist": ["nephrolog", "kidney"],
-    "urologist": ["urolog"],
-    "rheumatologist": ["rheumatolog"],
-    "endocrinologist": ["endocrinolog", "diabetes", "thyroid"],
-    "clinic": ["clinic"],
-}
-
-
 def _doctor_places_keyword(specialty: Optional[str]) -> str:
     if not specialty or not specialty.strip():
         return "doctor clinic"
@@ -436,33 +389,6 @@ def _doctor_places_keyword(specialty: Optional[str]) -> str:
     if term in ("dentist",):
         return term
     return f"doctor {term}"
-
-
-def _place_name_matches_specialty(place: dict, specialty: Optional[str]) -> bool:
-    """True if place name contains any keyword for the given specialty (for list priority)."""
-    if not specialty or not specialty.strip():
-        return False
-    key = specialty.strip().lower()
-    keywords = DOCTOR_SPECIALTY_NAME_KEYWORDS.get(key)
-    if not keywords:
-        # Unknown specialty: check if the specialty term itself appears in the name
-        keywords = [key]
-    name = (place.get("name") or "").lower()
-    return any(kw in name for kw in keywords)
-
-
-def _sort_doctors_by_specialty_and_distance(
-    places: List[dict], specialty: Optional[str] = None
-) -> List[dict]:
-    """Sort doctors: name-matching specialty first, then by distance (nearest first)."""
-    def key(p: dict) -> tuple:
-        matches = _place_name_matches_specialty(p, specialty)
-        dist = p.get("distance_km")
-        has_dist = dist is not None
-        dist_val = dist if has_dist else 0.0
-        # Matching first (False < True), then has_dist (False first), then distance
-        return (not matches, not has_dist, dist_val)
-    return sorted(places, key=key)
 
 
 def get_nearby_doctors(
